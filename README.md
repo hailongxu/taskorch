@@ -7,10 +7,10 @@ The entire concurrency library can generally be divided into three main componen
 
 ## example
 ```rust
-    use concurrent_pool as coc;
-    let mut queue = Queue::new();
+    use concurrent as coc;
+    let mut queue = coc::Queue::new();
     queue.add(print1);
-    queue.add(coc::f1(print2,33));
+    queue.add(||print2(&33));
     queue.add(||println!("task #3"));
     queue.add_exit(||println!("exit, after this"));
     coc::spawn_thread(&queue).wait().unwrap();
@@ -20,4 +20,5 @@ The entire concurrency library can generally be divided into three main componen
     fn print2(a:&i32) {
         println!("[{:?}] task #2 {a} ", thread::current().id());
     }
+
 ```
