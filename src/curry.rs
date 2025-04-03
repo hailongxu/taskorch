@@ -1,6 +1,6 @@
 // #![feature(unboxed_closures)]
 
-use std::marker::PhantomData;
+use std::{any::Any, fmt::Debug, marker::PhantomData};
 
 // #[derive(Debug)]
 pub(crate) struct Currier<F,C,R> {
@@ -46,10 +46,15 @@ pub(crate) trait CallOnce {
 }
 pub(crate) trait CallMut: CallOnce {
     fn call_mut(&mut self)->Self::R;
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
 }
 
 pub(crate) trait Call: CallMut {
     fn call(&self)->Self::R;
+}
+
+pub(crate) trait CallParam {
+    fn set(&mut self, i:usize, value: &dyn Any)->bool;
 }
 
 
@@ -68,6 +73,9 @@ where
 {
     fn call_mut(&mut self) -> F::Output {
         (self.f)()
+    }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        None
     }
 }
 
@@ -88,6 +96,9 @@ where
 {
     fn call_mut(&mut self) -> F::Output {
         (self.f)()
+    }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        None
     }
 }
 
@@ -126,6 +137,9 @@ where
     fn call_mut(&mut self) -> F::Output {
         (self.f)()
     }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        None
+    }
 }
 
 
@@ -133,7 +147,7 @@ where
 mod test_0 {
     use super::*;
     #[test]
-    fn test1() {
+    fn test0() {
         let mut c = Currier::from(||3);
         c.call();
         c.call_mut();
@@ -145,6 +159,7 @@ mod test_0 {
 impl<F,P1:Clone,R> Call for &Currier<F,(Option<P1>,),R>
 where
     F: Fn(P1)->R,
+    Self: CallParam
 {
     fn call(&self) -> F::Output {
         let p1 = self.c.0.as_ref().unwrap();
@@ -155,10 +170,14 @@ where
 impl<F,P1:Clone,R> CallMut for &Currier<F,(Option<P1>,),R>
 where
     F: Fn(P1)->R,
+    Self: CallParam
 {
     fn call_mut(&mut self) -> F::Output {
         let p1 = self.c.0.as_ref().unwrap();
         (self.f)(p1.clone())
+    }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        Some(self)
     }
 }
 
@@ -177,9 +196,13 @@ where
 impl<F,P1:Clone,R> CallMut for &mut Currier<F,(Option<P1>,),R>
 where
     F: FnMut(P1)->R,
+    Self: CallParam
 {
     fn call_mut(&mut self) -> F::Output {
         (self.f)(self.c.0.as_ref().unwrap().clone())
+    }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        Some(self)
     }
 }
 
@@ -207,15 +230,32 @@ where
 impl<F,P1:Clone,R> CallMut for Currier<F,(Option<P1>,),R>
 where
     F: FnMut(P1)->R,
+    Self: CallParam,
 {
     fn call_mut(&mut self) -> F::Output {
         (self.f)(self.c.0.as_ref().unwrap().clone())
     }
+    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+        Some(self)
+    }
 }
+
+impl<F,P1:Clone+'static,R> CallParam for Currier<F,(Option<P1>,),R>
+{
+    fn set(&mut self, i:usize, value: &dyn Any)->bool {
+        let Some(p1) = value.downcast_ref::<P1>() else {
+            return false;
+        };
+        self.c.0 = Some(p1.clone());
+        true
+    }
+}
+
 
 impl<F,P1:Clone,R> Call for Currier<F,(Option<P1>,),R>
 where
     F: Fn(P1)->R,
+    Self: CallParam,
 {
     fn call(&self) -> F::Output {
         (self.f)(self.c.0.as_ref().unwrap().clone())

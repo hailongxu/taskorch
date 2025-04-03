@@ -1,98 +1,31 @@
 use std::{
-    collections::{HashMap, VecDeque},
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex},
+    collections::HashMap,
+    sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc},
     thread::{self, JoinHandle}
 };
 
 mod curry;
 mod task;
-use task::*;
+mod queue;
+pub use queue::{spawn_thread, Queue};
 
-#[derive(Clone)]
-pub struct Queue(Arc<(Mutex<VecDeque<Box<dyn Task<R=()>+Send>>>,Condvar)>);
 
-impl Queue {
-    pub fn new()->Self {
-        Queue(Arc::new((Mutex::new(VecDeque::new()),Condvar::new())))
-    }
+pub(crate) static TASK_ID:TaskIdGen = TaskIdGen::new();
 
-    pub fn add<F,R>(&mut self,f:F)
-        where
-        F:Fn()->R + Send+'static,
-        R: Send+'static,
-    {
-        let task = NormalTask::from(f);
-        let mut lock = self.0.0.lock().unwrap();
-        let is_empty = lock.is_empty();
-        lock.push_back(Box::new(task));
-        if is_empty {
-            self.0.1.notify_one();
+struct TaskIdGen {
+    nexter: AtomicUsize
+}
+impl TaskIdGen {
+    const fn new()->Self {
+        Self {
+            nexter: AtomicUsize::new(0)
         }
     }
-
-    pub fn add_exit(&mut self, f:impl Fn()+'static+Send) {
-        let exit_task = ExitTask::from(f);
-        let mut lock = self.0.0.lock().unwrap();
-        let is_empty = lock.is_empty();
-        lock.push_back(Box::new(exit_task));
-        if is_empty {
-            self.0.1.notify_one();
-        }
-    }
-
-    pub fn pop(&mut self)->Option<Box<dyn Task<R=()>+Send>> {
-        self
-            .0
-            .0
-            .lock()
-            .unwrap()
-            .pop_front()
-    }
-    
-    pub fn clear(&mut self) {
-        self
-            .0
-            .0
-            .lock()
-            .unwrap()
-            .clear()
-    }
-
-    pub fn len(&self)->usize {
-        self
-            .0
-            .0
-            .lock()
-            .unwrap()
-            .len()
-    }
+    fn next(&self)->usize {
+        self.nexter.fetch_add(1, Ordering::Relaxed)
+    } 
 }
 
-pub fn spawn_thread(queue:&Queue)-> Jhandle {
-    let quit_flag = Arc::<AtomicBool>::new(AtomicBool::new(false));
-    let quit = quit_flag.clone();
-    let queue = queue.0.clone();
-    let handle = thread::spawn(move||{
-        loop {
-            if quit.load(Ordering::Relaxed) {
-                break;
-            }
-            
-            let mut m = queue.0.lock().unwrap();
-            let task = m.pop_front();
-            if let Some(task) = task {
-                drop(m);
-                task.call();
-                if let TaskKind::Exit = task.kind() {
-                    break;
-                }
-            } else {
-                let _unused = queue.1.wait(m);
-            }
-        }
-    });
-    Jhandle(handle,quit_flag)
-}
 
 pub struct Jhandle(JoinHandle<()>,Arc<AtomicBool>);
 
