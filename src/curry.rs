@@ -9,7 +9,7 @@ pub(crate) struct Currier<F,C,R> {
     r: PhantomData<R>,
 }
 
-impl<F:Fn()->R,R> From<F> for Currier<F,(),R> {
+impl<F:FnMut()->R,R> From<F> for Currier<F,(),R> {
     fn from(f: F) -> Self {
        Self {
         f,
@@ -19,7 +19,7 @@ impl<F:Fn()->R,R> From<F> for Currier<F,(),R> {
     }
 }
 
-impl<P1,F:Fn(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
+impl<P1,F:FnMut(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
     fn from(f: F) -> Self {
        Self {
         f,
@@ -240,18 +240,6 @@ where
     }
 }
 
-impl<F,P1:Clone+'static,R> CallParam for Currier<F,(Option<P1>,),R>
-{
-    fn set(&mut self, i:usize, value: &dyn Any)->bool {
-        let Some(p1) = value.downcast_ref::<P1>() else {
-            return false;
-        };
-        self.c.0 = Some(p1.clone());
-        true
-    }
-}
-
-
 impl<F,P1:Clone,R> Call for Currier<F,(Option<P1>,),R>
 where
     F: Fn(P1)->R,
@@ -262,6 +250,17 @@ where
     }
 }
 
+
+impl<F,P1:Clone+'static,R> CallParam for Currier<F,(Option<P1>,),R>
+{
+    fn set(&mut self, i:usize, value: &dyn Any)->bool {
+        let Some(p1) = value.downcast_ref::<P1>() else {
+            return false;
+        };
+        self.c.0 = Some(p1.clone());
+        true
+    }
+}
 
 
 #[cfg(test)]

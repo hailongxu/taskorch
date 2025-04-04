@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::HashMap,
     sync::{atomic::{AtomicBool, AtomicUsize, Ordering}, Arc},
     thread::{self, JoinHandle}
@@ -7,7 +8,10 @@ use std::{
 mod curry;
 mod task;
 mod queue;
+use queue::{when_c1_comed, C1map};
 pub use queue::{spawn_thread, Queue};
+use task::NormalTask;
+pub use task::Which;
 
 
 pub(crate) static TASK_ID:TaskIdGen = TaskIdGen::new();
@@ -48,6 +52,8 @@ impl Jhandle {
 pub struct Pool {
     queues: HashMap<usize,Queue>,
     jhands: HashMap<usize,Jhandle>,
+    // c1queue: Queue,
+    c1map: C1map,
     id_next: usize,
 }
 
@@ -56,6 +62,8 @@ impl Pool {
         Self {
             queues: HashMap::new(),
             jhands: HashMap::new(),
+            // c1queue: Queue::new(),
+            c1map: C1map::new(),
             id_next: 0,
         }
     }
@@ -63,6 +71,55 @@ impl Pool {
     fn next_id(&mut self)->usize {
         self.id_next += 1;
         self.id_next
+    }
+
+    pub fn add<F,R>(&self,f:F,which:Which)
+        where
+        F:Fn()->R+Send+'static,
+        R:Send+'static
+    {
+        let c1map = self.c1map.clone();
+        // let c1queue = self.c1queue.clone();
+        let c1queue = self.queues.values().next().unwrap().clone();
+        let postdo = move |r: Box<dyn Any>| {
+            let Ok(r) = r.downcast::<R>() else {
+                assert!(false,"failed to conver to R type");
+                return;
+            };
+            let r: R = *r;
+            when_c1_comed(&which, r, c1map.clone(), c1queue);
+        };
+        let postdo = Box::new(postdo);
+        let (_,normal) = self.queues.iter().next().unwrap();
+        normal.add(f,&which,postdo);
+    }
+
+    pub fn addc1<F,P1,R>(&self,f:F,which:Which)->usize
+        where
+        F:Fn(P1)->R+Send+'static,
+        P1:Send+Clone+'static,
+        R:Send+'static
+    {
+        let c1map = self.c1map.clone();
+        // let c1queue = self.c1queue.clone();
+        let c1queue = self.queues.values().next().unwrap().clone();
+        let postdo = move |r: Box<dyn Any>| {
+            let Ok(r) = r.downcast::<R>() else {
+                assert!(false,"failed to conver to R type");
+                return;
+            };
+            let r: R = *r;
+            when_c1_comed(&which, r, c1map.clone(), c1queue);
+        };
+        let postdo = Box::new(postdo);
+        let task = NormalTask::from(f);
+        let id = self.c1map.insert(task, postdo).unwrap();
+        id
+    }
+
+    pub fn add_exit(&self, f:impl Fn()+'static+Send) {
+        let (_,normal) = self.queues.iter().next().unwrap();
+        normal.add_exit(f);
     }
 
     fn queue(&self, qid:usize)->Option<&Queue> {
@@ -75,11 +132,12 @@ impl Pool {
 
     pub fn insert_queue(&mut self,queue:&Queue)->Option<usize> {
         let id = self.next_id();
-        self.queues.insert(id, queue.clone())
-            .map(|_|id)
+        let r = self.queues.insert(id, queue.clone());
+        dbg!(r.is_some());
+        Some(id)
     }
 
-    fn insert_thread_from(&mut self, qid:usize)->Option<usize> {
+    pub fn insert_thread_from(&mut self, qid:usize)->Option<usize> {
         let queue = self.queue(qid)?;
         spawn_thread(queue).collect_into(self)
     }
