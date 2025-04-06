@@ -1,45 +1,19 @@
 
-use concurrent::{self as coc, Queue, Which};
+use concurrent::{self as coc, Queue, TaskCurrier, TaskKind, Which};
 
 fn main() {
-    test_pool();
+    test_c1r1();
 }
 
-fn test_pool() {
+fn test_c1r1() {
     println!("----- test pool -----");
     let mut pool = coc::Pool::new();
     let qid = pool.insert_queue(&Queue::new()).unwrap();
-    pool.add(print1,Default::default());
-    let id = pool.addc1(print3,Default::default());
-    pool.add(print2, Which::new(id, 0));
-    // queue.add(print1);
-    // queue.add(||print2(&3));
-    // queue.add(||println!("task #2"));
-    // pool.add_exit(||println!("exit2"));
+    pool.add(TaskCurrier::from((print1,Which::default(),TaskKind::Normal)));
+    let id = pool.add(TaskCurrier::from((print3,Which::default(),TaskKind::Exit)));
+    pool.add(TaskCurrier::from((print2,Which::new(id,0),TaskKind::Normal)));
     pool.insert_thread_from(qid);
     pool.wait();
-}
-
-fn test_task_added_in_another() {
-    // use std::thread;
-
-    // println!("----- add task in another thread -----");
-    // let mut queue = Queue::new();
-    // queue.add(print1);
-    // queue.add(||print2(&4));
-
-    // let mut pool = coc::Pool::new();
-    // coc::spawn_thread(&queue).collect_into(&mut pool);
-
-    // // add task in another thread
-    // thread::spawn({
-    //     let mut queue = queue.clone();
-    //     move || {
-    //     queue.add(||print3(8));
-    //     queue.add_exit(exit);
-    // }}).join().unwrap();
-
-    // pool.wait();
 }
 
 use std::thread;

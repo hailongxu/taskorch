@@ -8,11 +8,14 @@ use std::{
 mod curry;
 mod task;
 mod queue;
+use curry::{CallMut, CallOnce};
 use queue::{when_c1_comed, C1map};
 pub use queue::{spawn_thread, Queue};
-use task::NormalTask;
+use task::Task;
 pub use task::Which;
-
+pub use task::TaskCurrier;
+pub use task::TaskKind;
+pub use curry::Currier;
 
 pub(crate) static TASK_ID:TaskIdGen = TaskIdGen::new();
 
@@ -73,53 +76,34 @@ impl Pool {
         self.id_next
     }
 
-    pub fn add<F,R>(&self,f:F,which:Which)
+    pub fn add<C>(&self,task:TaskCurrier<C>)->usize
         where
-        F:Fn()->R+Send+'static,
-        R:Send+'static
+        TaskCurrier<C>: Task,
+        C: CallMut + Send + 'static,
+        C::R: 'static,
     {
         let c1map = self.c1map.clone();
         // let c1queue = self.c1queue.clone();
         let c1queue = self.queues.values().next().unwrap().clone();
         let postdo = move |r: Box<dyn Any>| {
-            let Ok(r) = r.downcast::<R>() else {
+            let Ok(r) = r.downcast::<C::R>() else {
                 assert!(false,"failed to conver to R type");
                 return;
             };
-            let r: R = *r;
-            when_c1_comed(&which, r, c1map.clone(), c1queue);
+            let r: C::R = *r;
+            when_c1_comed(&task.which, r, c1map.clone(), c1queue);
         };
         let postdo = Box::new(postdo);
-        let (_,normal) = self.queues.iter().next().unwrap();
-        normal.add(f,&which,postdo);
-    }
 
-    pub fn addc1<F,P1,R>(&self,f:F,which:Which)->usize
-        where
-        F:Fn(P1)->R+Send+'static,
-        P1:Send+Clone+'static,
-        R:Send+'static
-    {
-        let c1map = self.c1map.clone();
-        // let c1queue = self.c1queue.clone();
-        let c1queue = self.queues.values().next().unwrap().clone();
-        let postdo = move |r: Box<dyn Any>| {
-            let Ok(r) = r.downcast::<R>() else {
-                assert!(false,"failed to conver to R type");
-                return;
-            };
-            let r: R = *r;
-            when_c1_comed(&which, r, c1map.clone(), c1queue);
-        };
-        let postdo = Box::new(postdo);
-        let task = NormalTask::from(f);
-        let id = self.c1map.insert(task, postdo).unwrap();
-        id
-    }
-
-    pub fn add_exit(&self, f:impl Fn()+'static+Send) {
-        let (_,normal) = self.queues.iter().next().unwrap();
-        normal.add_exit(f);
+        if 0 == task.count() {
+            let task = Box::new(task);
+            let (_,normal) = self.queues.iter().next().unwrap();
+            normal.add_boxtask(task,postdo);
+            usize::MAX
+        } else {
+            let id = self.c1map.insert(task, postdo).unwrap();
+            id
+        }
     }
 
     fn queue(&self, qid:usize)->Option<&Queue> {

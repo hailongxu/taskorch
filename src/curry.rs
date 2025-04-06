@@ -3,7 +3,7 @@
 use std::{any::Any, fmt::Debug, marker::PhantomData};
 
 // #[derive(Debug)]
-pub(crate) struct Currier<F,C,R> {
+pub struct Currier<F,C,R> {
     f: F,
     c: C,
     r: PhantomData<R>,
@@ -11,21 +11,21 @@ pub(crate) struct Currier<F,C,R> {
 
 impl<F:FnMut()->R,R> From<F> for Currier<F,(),R> {
     fn from(f: F) -> Self {
-       Self {
-        f,
-        c: (),
-        r: PhantomData
-       }
+        Self {
+            f,
+            c: (),
+            r: PhantomData
+        }
     }
 }
 
 impl<P1,F:FnMut(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
     fn from(f: F) -> Self {
-       Self {
-        f,
-        c: (None::<P1>,),
-        r: PhantomData,
-       }
+        Self {
+            f,
+            c: (None::<P1>,),
+            r: PhantomData,
+        }
     }
 }
 
@@ -43,6 +43,7 @@ fn test2() {
 pub(crate) trait CallOnce {
     type R;
     fn call_once(self)->Self::R;
+    fn count(&self)->usize;
 }
 pub(crate) trait CallMut: CallOnce {
     fn call_mut(&mut self)->Self::R;
@@ -88,6 +89,9 @@ where
     fn call_once(self) -> F::Output {
         (self.f)()
     }
+    fn count(&self)->usize {
+        0
+    }
 }
 
 impl<F,R> CallMut for &mut Currier<F,(),R>
@@ -110,6 +114,9 @@ where
     fn call_once(self) -> F::Output {
         (self.f)()
     }
+    fn count(&self)->usize {
+        0
+    }
 }
 
 impl<F,R> CallOnce for Currier<F,(),R>
@@ -119,6 +126,9 @@ where
     type R = R;
     fn call_once(self) -> F::Output {
         (self.f)()
+    }
+    fn count(&self)->usize {
+        0
     }
 }
 
@@ -191,6 +201,9 @@ where
         let p1 = self.c.0.as_ref().unwrap();
         (self.f)(p1.clone())
     }
+    fn count(&self)->usize {
+        1
+    }
 }
 
 impl<F,P1:Clone,R> CallMut for &mut Currier<F,(Option<P1>,),R>
@@ -214,6 +227,9 @@ where
     fn call_once(self) -> F::Output {
         (self.f)(self.c.0.as_ref().unwrap().clone())
     }
+    fn count(&self)->usize {
+        1
+    }
 }
 
 
@@ -224,6 +240,9 @@ where
     type R = R;
     fn call_once(self) -> F::Output {
         (self.f)(self.c.0.unwrap())
+    }
+    fn count(&self)->usize {
+        1
     }
 }
 

@@ -5,7 +5,7 @@ use std::{
     Condvar, Mutex}, thread
 };
 
-use crate::{task::{ExitTask, NormalTask, Task, TaskKind, Which}, Jhandle};
+use crate::{task::{Task, TaskKind, Which}, Jhandle};
 
 
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
@@ -22,36 +22,6 @@ impl Queue {
         let mut lock = self.0.0.lock().unwrap();
         let is_empty = lock.is_empty();
         lock.push_back((task,postdo));
-        if is_empty {
-            self.0.1.notify_one();
-        }
-    }
-    pub fn add<F,R>(&self,f:F,which:&Which,postdo: Box<PostDo>)
-        where
-        F:Fn()->R + Send+'static,
-        R: Send+'static,
-    {
-        let task = NormalTask::from((f,which));
-        let task = Box::new(task);
-        self.add_boxtask(task,postdo);
-    }
-
-    pub fn addc1<F,P1,R>(&self,f:F,which:&Which,postdo: Box<PostDo>)
-        where
-        F:Fn(P1)->R + Send+'static,
-        P1: Send+Clone+'static,
-        R: Send+'static,
-    {
-        let task = NormalTask::from((f,which));
-        let task = Box::new(task);
-        self.add_boxtask(task,postdo);
-    }
-
-    pub fn add_exit(&self, f:impl Fn()+'static+Send) {
-        let exit_task = ExitTask::from(f);
-        let mut lock = self.0.0.lock().unwrap();
-        let is_empty = lock.is_empty();
-        lock.push_back((Box::new(exit_task),Box::new(|_|when_nil_comed())));
         if is_empty {
             self.0.1.notify_one();
         }
