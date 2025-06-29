@@ -9,13 +9,12 @@ mod curry;
 mod task;
 mod queue;
 use curry::{CallMut, CallOnce};
-use queue::{when_c1_comed, C1map};
+use queue::{when_ci_comed, C1map};
 pub use queue::{spawn_thread, Queue};
 use task::Task;
-pub use task::Which;
 pub use task::TaskCurrier;
-pub use task::TaskKind;
-pub use curry::Currier;
+pub use task::Which;
+pub use task::Kind;
 
 pub(crate) static TASK_ID:TaskIdGen = TaskIdGen::new();
 
@@ -34,28 +33,32 @@ impl TaskIdGen {
 }
 
 
+/// a handle to a thread spawned for queue
 pub struct Jhandle(JoinHandle<()>,Arc<AtomicBool>);
 
 impl Jhandle {
+    /// record the thread handle into pool
     pub fn collect_into(self, pool:&mut Pool)->Option<usize> {
-        pool.insert_thread(self)
+        pool.insert_thread_handle(self)
     }
 
+    /// the thread exit once the current running task is finished
     pub fn exit_next(&mut self) {
         let _ = self.1.compare_exchange(
             false, true,
             Ordering::Acquire,Ordering::Relaxed);
     }
 
+    /// block until the thread has exited
     pub fn wait(self)->thread::Result<()> {
         self.0.join()
     }
 }
 
+/// Pool, a container that holds and managers all resources, such as threads and queues
 pub struct Pool {
     queues: HashMap<usize,Queue>,
     jhands: HashMap<usize,Jhandle>,
-    // c1queue: Queue,
     c1map: C1map,
     id_next: usize,
 }
@@ -65,7 +68,6 @@ impl Pool {
         Self {
             queues: HashMap::new(),
             jhands: HashMap::new(),
-            // c1queue: Queue::new(),
             c1map: C1map::new(),
             id_next: 0,
         }
@@ -76,6 +78,7 @@ impl Pool {
         self.id_next
     }
 
+    /// Enqueues a new task for future scheduling
     pub fn add<C>(&self,task:TaskCurrier<C>)->usize
         where
         TaskCurrier<C>: Task,
@@ -83,7 +86,6 @@ impl Pool {
         C::R: 'static,
     {
         let c1map = self.c1map.clone();
-        // let c1queue = self.c1queue.clone();
         let c1queue = self.queues.values().next().unwrap().clone();
         let postdo = move |r: Box<dyn Any>| {
             let Ok(r) = r.downcast::<C::R>() else {
@@ -91,7 +93,7 @@ impl Pool {
                 return;
             };
             let r: C::R = *r;
-            when_c1_comed(&task.which, r, c1map.clone(), c1queue);
+            when_ci_comed(&task.to, r, c1map.clone(), c1queue);
         };
         let postdo = Box::new(postdo);
 
@@ -106,14 +108,17 @@ impl Pool {
         }
     }
 
-    fn queue(&self, qid:usize)->Option<&Queue> {
+    /// gets the ref to Queue by ID
+    pub fn queue(&self, qid:usize)->Option<&Queue> {
         self.queues.get(&qid)
     }
 
-    fn jhandle(&self, tid:usize)->Option<&Jhandle> {
+    /// gets the ref to thread handle by ID
+    pub fn jhandle(&self, tid:usize)->Option<&Jhandle> {
         self.jhands.get(&tid)
     }
 
+    /// returns the queue ID recorded in pool
     pub fn insert_queue(&mut self,queue:&Queue)->Option<usize> {
         let id = self.next_id();
         let r = self.queues.insert(id, queue.clone());
@@ -121,12 +126,13 @@ impl Pool {
         Some(id)
     }
 
-    pub fn insert_thread_from(&mut self, qid:usize)->Option<usize> {
+    /// return thread.id in pool
+    pub fn spawn_thread_for(&mut self, qid:usize)->Option<usize> {
         let queue = self.queue(qid)?;
         spawn_thread(queue).collect_into(self)
     }
 
-    fn insert_thread(&mut self, jhandle:Jhandle)->Option<usize> {
+    fn insert_thread_handle(&mut self, jhandle:Jhandle)->Option<usize> {
         let id = self.next_id();
         self.jhands.insert(id, jhandle)
             .map(|_|id)
@@ -138,12 +144,14 @@ impl Pool {
         Some(())
     }
 
-    fn exit_next_all(&mut self) {
+    /// Notifies each thread to exit upon completing each current running task.
+    pub fn exit_next_all(&mut self) {
         for jhand in self.jhands.values_mut() {
             jhand.exit_next();
         }
     }
 
+    /// block until all threads have exited
     pub fn wait(self) {
         for handle in self.jhands {
             handle.1.0.join().unwrap();

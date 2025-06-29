@@ -5,11 +5,13 @@ use std::{
     Condvar, Mutex}, thread
 };
 
-use crate::{task::{Task, TaskKind, Which}, Jhandle};
+use crate::{task::{Task, Kind, Which}, Jhandle};
 
 
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
 // static  WHEN_NIL_COMED: Box<PostDo> = Box::new(|_|());
+
+/// A queue holding tasks awaiting scheduling by threads
 #[derive(Clone)]
 pub struct Queue(Arc<(Mutex<VecDeque<(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
 
@@ -72,7 +74,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
                 if let Some(r) = r {
                     postdo(r);
                 }
-                if let TaskKind::Exit = task.kind() {
+                if let Kind::Exit = task.kind() {
                     break;
                 }
             }
@@ -83,7 +85,6 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
     });
     Jhandle(handle,quit_flag)
 }
-
 
 #[derive(Clone)]
 pub(crate) struct C1map(Arc<(Mutex<HashMap<usize,(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
@@ -107,25 +108,29 @@ impl C1map {
         let mut lock = self.0.0.lock().unwrap();
         lock.remove(&id)
     }
-    fn update_c1<T:'static>(&self,which:&Which,v:T)->bool {
+
+    fn update_ci<T:'static>(&self,which:&Which,v:T)->Option<bool> {
         let mut lock = self.0.0.lock().unwrap();
         let Some((task,postdo)) = lock.get_mut(&which.id) else {
-            return false;
+            return None;
         };
         let Some(param) = task.as_param_mut() else {
-            return false;
+            return None;
         };
-        param.set(which.i, &v)
+        if !param.set(which.i, &v) {
+            return None;
+        }
+        Some(param.is_full())
     }
 }
 
-pub(crate) fn when_c1_comed<T:'static>(which:&Which, v:T, c1map: C1map, q:Queue)->bool {
+pub(crate) fn when_ci_comed<T:'static>(which:&Which, v:T, c1map: C1map, q:Queue)->bool {
     if which.is_none() {
         return false;
     }
-    if !c1map.update_c1(which, v) {
+    let Some(true) = c1map.update_ci(which, v) else {
         return false;
-    }
+    };
     let Some((task,postdo)) = c1map.remove(which.id) else {
         return  false;
     };

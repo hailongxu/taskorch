@@ -1,16 +1,3 @@
-# Task Orch
-Tasks can be orchestrated in three distinct modes — independent, dependent, and conditional — and executed concurrently to complete the full workload.
-
-The entire concurrency library can generally be divided into three main components:
-
-- **Queue** — The queue holds tasks that are waiting to be processed. It acts as a buffer where tasks are stored until they can be executed.
-- **Threads** — Threads are responsible for executing the tasks retrieved from the queue.
-- **Resource Pool** — Responsible for the lifecycle management of both the Queue and the Threads, establishing a mapping between names and instances.
-
-As this is the initial development release (v0.1.0), the API is **highly unstable** and **will change** in subsequent versions.
-
-## Example
-```rust
 use taskorch::{Pool, Queue, TaskCurrier, Kind, Which};
 
 fn main() {
@@ -39,4 +26,3 @@ fn main() {
     // Step#5. wait until all finished
     pool.wait();
 }
-```
