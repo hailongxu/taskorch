@@ -14,11 +14,21 @@ fn main() {
     // task#1. add a indepent task
     pool.add(TaskCurrier::from(||println!("task free Fn say hello")));
 
-    // task#3. add a task with cond
-    let id_exit = pool.add(TaskCurrier::from((|msg:&str|println!("recv '{msg}' and exit"),Kind::Exit)));
+    // task#2. add a exit task with cond
+    let id_exit = pool.add(TaskCurrier::from((
+        |msg:&str|println!("this is exit task, recved '{msg}' and exit"),
+        Kind::Exit
+    )));
 
-    // let id_exit = &id_exit;
-    pool.add(TaskCurrier::from((||{println!("gen a cond 'msg:exit' ");"msg:exit"},Which::new(id_exit, 0))));
+    // task#3. gen a task message to notify exit task to be scheduled
+    pool.add(TaskCurrier::from((
+        move||{
+            let id_exit = &id_exit;
+            println!("gen a cond 'msg:exit' ref out value:{id_exit} ");
+            "msg:exit"
+        },
+        Which::new(id_exit, 0)
+    )));
 
     // Step#4. start a thread and run
     pool.spawn_thread_for(qid);

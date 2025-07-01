@@ -70,11 +70,12 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
             let mut m = queue.0.lock().unwrap();
             if let Some((mut task,postdo)) = m.pop_front() {
                 drop(m);
-                let r = task.call_mut();
+                let kind = task.kind();
+                let r = task.run();
                 if let Some(r) = r {
                     postdo(r);
                 }
-                if let Kind::Exit = task.kind() {
+                if let Kind::Exit = kind {
                     break;
                 }
             }

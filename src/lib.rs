@@ -8,7 +8,7 @@ use std::{
 mod curry;
 mod task;
 mod queue;
-use curry::{CallMut, CallOnce};
+use curry::CallOnce;
 use queue::{when_ci_comed, C1map};
 pub use queue::{spawn_thread, Queue};
 use task::Task;
@@ -82,7 +82,7 @@ impl Pool {
     pub fn add<C>(&self,task:TaskCurrier<C>)->usize
         where
         TaskCurrier<C>: Task,
-        C: CallMut + Send + 'static,
+        C: CallOnce + Send + 'static,
         C::R: 'static,
     {
         let c1map = self.c1map.clone();
@@ -97,7 +97,7 @@ impl Pool {
         };
         let postdo = Box::new(postdo);
 
-        if 0 == task.count() {
+        if 0 == task.currier.count() {
             let task = Box::new(task);
             let (_,normal) = self.queues.iter().next().unwrap();
             normal.add_boxtask(task,postdo);

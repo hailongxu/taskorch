@@ -12,7 +12,8 @@ fn main() {
     // Step#3. create tasks
 
     // task#1. add a free task closure
-    pool.add(TaskCurrier::from(||println!("task free Fn")));
+    let hello = String::from("hello");
+    pool.add(TaskCurrier::from(||{ let hello = hello; println!("task free Fn {hello}");}));
 
     // task#2. add a free task function
     pool.add(TaskCurrier::from(print1));
