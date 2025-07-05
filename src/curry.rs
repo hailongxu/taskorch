@@ -2,6 +2,63 @@
 
 use std::{any::Any, marker::PhantomData};
 
+trait TupOpt<T> {
+    type T;
+}
+
+impl TupOpt<()> for () {
+    type T = ();
+}
+
+impl<T1> TupOpt<(T1,)> for (T1,) {
+    type T = (Option<T1>,);
+}
+
+impl<T1,T2> TupOpt<(T1,T2)> for (T1,T2) {
+    type T = (Option<T1>,Option<T2>);
+}
+
+
+pub(crate) trait Fndecl<T> {
+    type Params;
+    type R;
+    type ParamsOpt;
+}
+
+impl<F,R> Fndecl<(R,)> for F
+where F: FnOnce()->R
+{
+    type Params = ();
+    type R = R;
+    type ParamsOpt = ();
+}
+
+impl<F,P1,R> Fndecl<(P1,R)> for F
+where F: FnOnce(P1)->R
+{
+    type Params = (P1,);
+    type R = R;
+    type ParamsOpt = (Option<P1>,);
+}
+
+impl<F,P1,P2,R> Fndecl<(P1,P2,R)> for F
+where F: FnOnce(P1,P2)->R
+{
+    type Params = (P1,P2);
+    type R = R;
+    type ParamsOpt = (Option<P1>,Option<P2>);
+}
+
+// fn currier<F, PR>(f: F) -> <F::Params as TupOpt<F::Params>>::T
+// where
+//     F: FnDecl<PR>,
+//     F::R: Default,
+//     F::Params: Default + TupOpt<F::Params>,
+//     <F::Params as TupOpt<F::Params>>::T: Default,
+// {
+//     <F::Params as TupOpt<F::Params>>::T::default()
+// }
+
 // #[derive(Debug)]
 pub struct Currier<F,C,R> {
     f: F,
@@ -9,7 +66,11 @@ pub struct Currier<F,C,R> {
     r: PhantomData<R>,
 }
 
-impl<F:FnOnce()->R,R> From<F> for Currier<F,(),R> {
+impl<F,R> From<F> for Currier<F,(),R>
+    where
+    // F:Fndecl<(R,)>,
+    F:FnOnce()->R
+{
     fn from(f: F) -> Self {
         Self {
             f,
@@ -19,7 +80,11 @@ impl<F:FnOnce()->R,R> From<F> for Currier<F,(),R> {
     }
 }
 
-impl<P1,F:FnOnce(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
+impl<P1,F,R> From<F> for Currier<F,(Option<P1>,),R>
+    where
+    // F:Fndecl<(P1,R)>,
+    F:FnOnce(P1)->R,
+{
     fn from(f: F) -> Self {
         Self {
             f,
@@ -29,7 +94,11 @@ impl<P1,F:FnOnce(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
     }
 }
 
-impl<P1,P2,F:FnOnce(P1,P2)->R,R> From<F> for Currier<F,(Option<P1>,Option<P2>,),R> {
+impl<P1,P2,F,R> From<F> for Currier<F,(Option<P1>,Option<P2>,),R>
+    where
+    // F: Fndecl<(P1,P2,R)>,
+    F:FnOnce(P1,P2)->R,
+{
     fn from(f: F) -> Self {
         Self {
             f,

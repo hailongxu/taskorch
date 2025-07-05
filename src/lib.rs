@@ -14,12 +14,11 @@ use curry::CallOnce;
 use queue::{when_ci_comed, C1map};
 pub use queue::{spawn_thread, Queue};
 use task::Task;
-use task::TaskBuild;
-pub use task::TaskCurrier;
-pub use task::Anchor;
-pub use task::Kind;
+pub use task::{
+    Anchor,Kind,
+    TaskCurrier,TaskBuildNew,TaskBuildOp
+};
 pub use curry::Currier;
-pub use task::IntoTaskBuild;
 
 
 /// a handle to a thread spawned for queue
@@ -68,7 +67,14 @@ impl Pool {
     }
 
     /// Enqueues a new task for future scheduling
-    pub fn add<C>(&self,TaskBuild(task,taskid):TaskBuild<C>)->usize
+    ///
+    /// # argments
+    /// * `task` - The task to be added, wrapped in a `TaskCurrier`.
+    /// * `taskid` - An optional identifier for the task, used for tracking.
+    /// 
+    /// # returns
+    /// * `usize` - The ID of the task
+    pub fn add<C>(&self,(task,taskid):(TaskCurrier<C>,Option<usize>))->usize
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
