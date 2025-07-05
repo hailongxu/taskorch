@@ -9,7 +9,10 @@ pub struct Currier<F,C,R> {
     r: PhantomData<R>,
 }
 
-impl<F:FnOnce()->R,R> From<F> for Currier<F,(),R> {
+impl<F,R> From<F> for Currier<F,(),R>
+    where
+    F:FnOnce()->R
+{
     fn from(f: F) -> Self {
         Self {
             f,
@@ -19,7 +22,10 @@ impl<F:FnOnce()->R,R> From<F> for Currier<F,(),R> {
     }
 }
 
-impl<P1,F:FnOnce(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
+impl<P1,F,R> From<F> for Currier<F,(Option<P1>,),R>
+    where
+    F:FnOnce(P1)->R,
+{
     fn from(f: F) -> Self {
         Self {
             f,
@@ -29,7 +35,10 @@ impl<P1,F:FnOnce(P1)->R,R> From<F> for Currier<F,(Option<P1>,),R> {
     }
 }
 
-impl<P1,P2,F:FnOnce(P1,P2)->R,R> From<F> for Currier<F,(Option<P1>,Option<P2>,),R> {
+impl<P1,P2,F,R> From<F> for Currier<F,(Option<P1>,Option<P2>,),R>
+    where
+    F:FnOnce(P1,P2)->R,
+{
     fn from(f: F) -> Self {
         Self {
             f,
