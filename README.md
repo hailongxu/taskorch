@@ -10,32 +10,109 @@ The entire concurrency library can generally be divided into four main component
 
 
 ## Task
-Tasks can be orchestrated in three distinct modes — independent, dependent, and conditional — and executed concurrently to complete the full workload.
+### Task Modes
+Tasks can be executed in **two distinct modes**:
+- **Independent**: Runs freely without constraint.
+- **Conditional**: Executes only when all conditions are satisfied.
 
-**Normal task**
-|#|cond?|to-notify?|method-name|taskid-needed?|example|
-|--|--|--|--|--|---|
-|1|No|No|into_task|No|`Currier::from(\|\|{})->into_task()`|
-|2|No|Yes|into_task_to|No|`Currier::from(\|\|{3})->into_task_to(Anchor(1,0))`|
-|3|Yes|No|into_ctask|Yes|`Currier::from(\|c:i8\|{})->into_ctask(Some(1))`|
-|4|Yes|Yes|into_ctask_to|Yes|`Currier::from(\|c:i8\|{9})->into_ctask_to(Some(2),Anchor(3,0))`|
+### Task Flow
+1. **Activation**:  
+   A task is scheduled once all its required conditions are fulfilled.
+2. **Execution**:  
+   The task runs and computes its return value.
+3. **Data Passing**:  
+   If a `target anchor` is configured, the return value will be passed on to another task.
 
-**Exit Task**
-|#|cond?|method-name|taskid-needed?|example|
-|--|--|--|--|--|
-|1|No|into_task_exit|No|`Currier::from(\|\|{})->into_task_exit()`|
-|2|Yes|into_ctask_exit|Yes|`Currier::from(\|c:i8\|{})->into_ctask_exit(Some(3))`|
+**Key Notes**:  
+- **Conditions** correspond to the function’s parameters (0-indexed).
 
+### Task ID Assignment
+- **Explicit ID**: You can provide your own ID using a generator or by calling `taskid_next()`.
+- **Auto-generated**: If you omit specifying an ID, the system will automatically assign one.
 
-If the task owns cond, it must have taskid which other task can notify cond to.
+### Building a Task (3-Step Process)
+1. **Prepare**:  Define a function or closure.
+2. **Create**:  Create the task chained by `.task()`.
+3. **Notify (Optional)**:  Chain tasks by calling `to()` to set a `target anchor`.  
+   *This step can be skipped if the task does not produce any output.*
 
+### Task Creation Code
+
+#### Note
+NO `parameter`, NO `taskid` needed.  
+NO `return`, NO `target anchor` required.  
+
+**Case 1**:  [ **No** parameter, **No** return ]  
+```rust
+# use taskorch::TaskBuildNew as _;
+let task = 
+    (||{})          // <1> Define the body
+        .task();    // <2> Create a task from the given closure.
+                    // <3> `to()` skipped, as there is no return value
+```
+
+**Case 2**:  [ **No** parameter, **With** return ]  
+```rust
+# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
+let task = 
+    (||{3})         // <1> Define the body
+        .task()     // <2> Create a task from the given closure.
+        .to(2,0);   // <3> Set target;
+                    //     the return value will be forwarded to task #2, condition #0.
+
+let task = 
+    (||{3})         // <1> ..
+        .task();    // <2> ..
+                    // <3> `to()` skipped, the return value dropped
+```
+
+**Case 3**:  [ **With** parameter, **No** return ]  
+```rust
+# use taskorch::TaskBuildNew as _;
+
+let task = 
+    (|_:i8|{})      // <1> Define the body, taskid is auto-generated.
+        .task();    // <2> Create a task from the given closure.
+                    // <3> `to()` skipped, as there is no return value
+let task = 
+    (|_:i8|{}, 1)   // <1> Define the body, with an explicit taskid.
+        .task();    // <2> ..
+                    // <3> ..
+```
+
+**Case 4**:  [ **With** parameter, **With** return ]  
+```rust
+# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
+
+let task = 
+    (|_:i8|{3})     // <1> Define the body, taskid is auto-generated.
+        .task();    // <2> Create a task from the given closure.
+                    // <3> `to()` skipped, the return value dropped
+let task = 
+    (|_:i8|{3}, 1)  // <1> Define the body, with an explicit taskid.
+        .task();    // <2> ..
+                    // <3> ..
+
+let task = 
+    (|_:i8|{3})     // <1> Define the body, taskid is auto-generated.
+        .task()     // <2> Create a task from the given closure.
+        .to(2,0);   // <3> Set target;
+                    //     the return value will be forwarded to task #2 and cond #0
+
+let task = 
+    (|_:i8|{3}, 1) // <1> Define the body, with an explicit taskid.
+        .task()    // <2> ..
+        .to(2,0);  // <3> ..
+```
+**Exit task creation**  
+The only difference here is the use of `.exit_task()` instead of `.task()`.
 
 ## Note
 As this is the initial development release (v0.1.0), the API is **highly unstable** and **will change** in subsequent versions.
 
 ## Example
 ```rust
-use taskorch::{Pool, Queue, Currier, Anchor, IntoTaskBuild};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
 
 fn main() {
     println!("----- test task orch -----");
@@ -48,24 +125,26 @@ fn main() {
 
     // Step#3. create tasks
 
-    // task#1. add a indepent task
-    pool.add(Currier::from(||println!("task free Fn say hello")).into_task());
+    // an indepent task
+    pool.add((||println!("task free say hello")).task());
 
-    // task#2. add a exit task with cond
+    // an exit task with ONE str cond
     let id_exit = pool.add(
-        Currier::from(
-            |msg:&str|println!("this is exit task, recved '{msg}' and exit")
-        ).into_ctask_exit(None)
+        (
+            |msg:&str|println!("exit task, recved ({msg:?}) and EXIT"),
+            1
+        ).exit_task()
     );
+    assert_eq!(id_exit,1);
 
-    // task#3. gen a task message to notify exit task to be scheduled
+    // normal task pass message to exit task
     pool.add(
-        Currier::from(
+        (
         move||{
             let id_exit = &id_exit;
-            println!("gen a cond 'msg:exit' ref out value:{id_exit} ");
+            println!("normal pass [\"msg:exit\"] to: task#{id_exit}");
             "msg:exit"
-        }).into_task_to(Anchor(id_exit, 0))
+        }).task().to(id_exit, 0)
     );
 
     // Step#4. start a thread and run
@@ -75,3 +154,4 @@ fn main() {
     pool.wait();
 }
 ```
+For a more complex demo, see the `usage` example.

@@ -6,12 +6,14 @@ use std::{
 
 use crate::curry::{CallOnce, CallParam, Currier};
 
-/// The kind of task.
+/// Defines the behavior type for tasks.
 #[derive(Clone,Copy)]
 pub enum Kind {
-    /// Only executing
+    /// Standard task execution.
+    /// The thread continues running after task completion.
     Normal,
-    /// Exits the thread after executing
+    /// Exit task execution.
+    /// The current thread will exit automatically after the task completes.
     Exit,
 }
 
@@ -43,7 +45,7 @@ pub(crate) trait Task
     fn kind(&self)->Kind;
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,Debug)]
 /// Represents a position where a condition occurs.
 pub struct Anchor(
     /// The task ID associated with the condition.
@@ -96,24 +98,35 @@ impl<T> Task for TaskCurrier<T>
     }
 }
 
-/// TaskBuildNew is fond to task with an optonal task ID.
+/// A builder trait for constructing tasks with an optional task ID.
 pub trait TaskBuildNew<TC> {
-    /// just a normal task, without id.
+    /// construct a task.
+    /// # Returns
+    /// A tuple containing:
+    /// - The `Task Currier` (`TC`)
+    /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
     fn task(self)->(TC,Option<usize>);
+    /// construct a exit task
+    /// # Note
+    /// This is functionally identical to `task()`, with the additional behavior of thread exit gracefully
+    /// after task completion.
     fn exit_task(self)->(TC,Option<usize>);
 }
-/// TaskBuildOp is to modify a task with an optional condition and exit.
+/// TaskBuildOp provides target anchor configuration.
 pub trait TaskBuildOp<Currier> {
-    /// Sets the target anchor 指向 (taskid 和 condid).
-    fn to(self, to: Anchor)->Self;
+    /// Configures the target anchor to `(taskid, condid)`.
+    /// # Arguments:
+    /// * `taskid` - target task identifier
+    /// * `i` - cond #index (0-based)
+    fn to(self, taskid:usize,i:usize)->Self;
 }
 
 impl<Currier> TaskBuildOp<Currier> for (TaskCurrier<Currier>,Option<usize>) {
-    fn to(self, to: Anchor)->Self {
+    fn to(self, taskid:usize,i:usize)->Self {
         (
             TaskCurrier {
                 currier: self.0.currier,
-                to: Some(to),
+                to: Some(Anchor(taskid,i)),
                 kind: self.0.kind,
             },
             self.1
@@ -229,8 +242,13 @@ macro_rules! impl_task_build_new {
     };
 }
 
-impl_task_build_new!(P1, P2);
-
+impl_task_build_new!(P1,P2);
+impl_task_build_new!(P1,P2,P3);
+impl_task_build_new!(P1,P2,P3,P4);
+impl_task_build_new!(P1,P2,P3,P4,P5);
+impl_task_build_new!(P1,P2,P3,P4,P5,P6);
+impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7);
+impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7,P8);
 
 
 #[test]
@@ -250,13 +268,20 @@ fn test_task_new() {
     let t = f.task();
     let t :Box<dyn Task> = Box::new(t.0);
     t.run();
+}
 
+#[should_panic]
+#[test]
+fn test_task_new_panic() {
     let f = |_:i32,_:i32|{};
     let t = f.task();
+    let t :Box<dyn Task> = Box::new(t.0);
+    // the param is not set, so panic
+    t.run();
 }
 
 #[test]
-fn test_task_run() {
+fn test_task_postdo() {
     let mut v = 3;
     let f = ||{v=3;v};
     let v = Some(String::new());
@@ -264,9 +289,51 @@ fn test_task_run() {
     let _r1: &dyn FnMut()->i32 = &f;
     let r1: Box<dyn FnOnce(i32)> = Box::new(postdo);
     r1(3);
-
-    let c1 = (|_p:i32|()).task();
+}
+#[test]
+fn test_task_run() {
+    // one cond
+    let c1 = (|_p:i32|println!("get c1")).task();
     let mut c1: Box<dyn Task> = Box::new(c1.0);
     c1.as_param_mut().map(|e|e.set(0, &5));
     c1.run();
+
+    // 8 cond
+    let tp1 = 1;
+    let tp2 = "2nd static str";
+    let tp3 = "3rd String".to_string();
+    let tp4 = vec![41,42,43];
+    let tp5 = 5;
+    let tp6 = 6;
+    let tp7 = 7;
+    let tp8 = 8;
+    let tr8 = tp1+tp5+tp6+tp7+tp8;
+    let c8 = (
+        |p1:i32,p2:&'static str,p3:String,p4:Vec<i32>,p5:i32,p6:i32,p7:i32,p8:i32|{
+        assert_eq!(p1,tp1);
+        assert_eq!(p2,tp2);
+        assert_eq!(p3,tp3);
+        assert_eq!(p4,tp4);
+        assert_eq!(p5,tp5);
+        assert_eq!(p6,tp6);
+        assert_eq!(p7,tp7);
+        assert_eq!(p8,tp8);
+        println!("recevied cond: {p1},{p2},{p3},{p4:?},{p5},{p6},{p7},{p8},");
+        p1+p5+p6+p7+p8
+    }).task();
+    let mut c8: Box<dyn Task> = Box::new(c8.0);
+    c8.as_param_mut().map(
+        |e|
+        e.set(0, &tp1) && 
+        e.set(1, &tp2) && 
+        e.set(2, &tp3) && 
+        e.set(3, &tp4) && 
+        e.set(4, &tp5) && 
+        e.set(5, &tp6) && 
+        e.set(6, &tp7) && 
+        e.set(7, &tp8)
+    );
+    let r = c8.run().unwrap();
+    let r = r.downcast::<i32>().unwrap();
+    assert_eq!(*r, tr8);
 }

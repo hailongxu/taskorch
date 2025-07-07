@@ -2,6 +2,7 @@
 name = "taskorch"
 version = "0.1.0"
 edition = "2024"
+authors = ["xuhailong"]
 description = "Concurrent Pool for task processing"
 license = "MIT or Apache-2.0"
 repository = "https://github.com/hailongxu/taskorch"

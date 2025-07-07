@@ -1,4 +1,4 @@
-use taskorch::{Pool, Queue, Anchor, TaskBuildNew, TaskBuildOp};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
 
 fn main() {
     println!("----- test task orch -----");
@@ -11,25 +11,26 @@ fn main() {
 
     // Step#3. create tasks
 
-    // task#1. add a indepent task
-    pool.add((||println!("task free Fn say hello")).task());
+    // an indepent task
+    pool.add((||println!("task free say hello")).task());
 
-    // task#2. add a exit task with cond
+    // an exit task with ONE str cond
     let id_exit = pool.add(
         (
-            |msg:&str|println!("this is exit task, recved '{msg}' and exit"),
+            |msg:&str|println!("exit task, recved ({msg:?}) and EXIT"),
             1
         ).exit_task()
     );
     assert_eq!(id_exit,1);
-    // task#3. gen a task message to notify exit task to be scheduled
+
+    // normal task pass message to exit task
     pool.add(
         (
         move||{
             let id_exit = &id_exit;
-            println!("gen a cond 'msg:exit' ref out value:{id_exit} ");
+            println!("normal pass [\"msg:exit\"] to: task#{id_exit}");
             "msg:exit"
-        }).task().to(Anchor(id_exit, 0))
+        }).task().to(id_exit, 0)
     );
 
     // Step#4. start a thread and run

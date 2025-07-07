@@ -1,4 +1,7 @@
-use taskorch::{Pool, Queue, Anchor, TaskBuildNew, TaskBuildOp};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
+
+mod debug;
+use debug::*;
 
 fn main() {
     println!("----- test task orch -----");
@@ -10,34 +13,40 @@ fn main() {
     let qid = pool.insert_queue(&Queue::new()).unwrap();
 
     // Step#3. create tasks
-
-    // task#1. add a free task closure
     let hello = String::from("hello");
-    let task_hello = (||{ let hello = hello; println!("task free Fn {hello}");})
-    .task();
+    let task_hello = (||{
+            let ti = ti!();
+            let hello = hello;
+            println!("{ti}  task free Fn {hello}");
+        }).task();
     pool.add(task_hello);
 
-    // task#2. add a free task function
     let task_print1 = print1.task();
     pool.add(task_print1);
 
-    // task#3. add a task with cond
-    let id_exit = pool.add(exit_on.exit_task());
+    // Exit task with one condition
+    // This elegant approach ensures all threads exit one by one,
+    // guaranteeing each thread can receive the exit message
+    let id_exit = pool.add(exit2_on.exit_task());
+    let id_exit = pool.add(exit1_on_to.exit_task().to(id_exit, 0));
 
-    // task#4. add a task which get cond and gen cond to <task.id_exit>
-    let task2 = print2_on_and_to.task().to(Anchor(id_exit,0));
-    let id2 = pool.add(task2);
+    // Normal task with 8 conds and pass to exit task
+    let task8 = print_on8_and_to.task().to(id_exit,0);
+    let id8 = pool.add(task8);
 
-    // task#5. add a task which get cond and gen cond to <task.id2>
-    let id = pool.add(print_on_and_to.task().to(Anchor(id2,0)));
-    
-    // task#6. add a task which gen cond to <task.id>
-    pool.add(task_to.task().to(Anchor(id,0)));
+    // below task pass cond to task id8
+    pool.add((||{let ti=ti!();w!();println!("{ti}  task pass cond [1] to id8");1}).task().to(id8,0));
+    pool.add(task_hello_to.task().to(id8,1));
+    pool.add(pass_to.task().to(id8,2));
+    pool.add(pass_to.task().to(id8,3));
+    pool.add(pass_to.task().to(id8,4));
+    pool.add(pass_to.task().to(id8,5));
+    pool.add(pass_to.task().to(id8,6));
+    let id1 = pool.add(print_on1_and_to.task().to(id8,7));
+    pool.add(task_to.task().to(id1,0));
 
-      // task#7. add a task which gen cond to <task.id2>
-    pool.add(task_hello_to.task().to(Anchor(id2,1)));
-  
     // Step#4. start a thread and run
+    pool.spawn_thread_for(qid);
     pool.spawn_thread_for(qid);
 
     // Step#5. wait until all finished
@@ -46,38 +55,61 @@ fn main() {
 
 // a free task
 fn print1() {
-    println!("task free fn");
+    let ti = ti!();
+    println!("{ti}  task free fn");
 }
 
 // gen a cond i32
 fn task_to()->i32 {
     let r = 5;
-    println!("task to => r.cond={r:?}");
+    let ti = ti!();
+    println!("{ti}  task pass cond [{r:?}] to task-id2");
     r
 }
 
 // gen a cond str
 fn task_hello_to()->&'static str {
     let r = "hello";
-    println!("task to => r.cond={r:?}");
+    let ti = ti!();
+    println!("{ti}  task pass [{r:?}] to task-id8");
     r
 }
 
 // which accept a cond and gen a cond
-fn print_on_and_to(a:i32)->i32 {
-    let r = a * 2;
-    println!("task on-to #3 , wait cond {a}, and => r.cond={r}");
+fn print_on1_and_to(a:i32)->i32 {
+    let r = 1;
+    let ti = ti!();
+    println!("{ti}  task wait cond ({a}), and pass cond [{r}] to task-id8");
+    assert_eq!(r,1);
     r
 }
 
+fn pass_to()->i32 {
+    let ti = ti!();
+    w!();
+    let r = 1;
+    println!("{ti}  task pass cond [{r}] to task-id8");
+    assert_eq!(r,1);
+    r
+}
 // which accept a cond and gen a cond
-fn print2_on_and_to(a:i32,b:&str)->i32 {
-    let r = a + a;
-    println!("task on-to #3 , wait cond ({a}, {b}), and => r.cond={r}");
+fn print_on8_and_to(a:i32,b:&str,c:i32,d:i32,e:i32,f:i32,g:i32,h:i32)->i32 {
+    let r = a+c+d+e+f+g+h;
+    let ti = ti!();
+    println!("{ti}  task id8 , wait cond ({a},{b},{c},{d},{e},{f},{g},{h}), and pass [{r}] to exit task");
+    assert_eq!(r, 7);
     r
 }
 
 // accept a cond and exit
-fn exit_on(a:i32) {
-    println!("exit task #4 wait the cond {a} ");
+fn exit1_on_to(a:i32)->i32 {
+    let r = a+1;
+    let ti = ti!();
+    println!("{ti}  exit task received the cond ({a}) pass cond [{r}] to exit2 and EXIT");
+    r
+}
+fn exit2_on(a:i32)->i32 {
+    let ti = ti!();
+    println!("{ti}  exit task received the cond ({a}) and EXIT");
+    a+1
 }

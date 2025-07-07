@@ -50,6 +50,12 @@ macro_rules! impl_currier_from {
 }
 
 impl_currier_from!(P1,P2);
+impl_currier_from!(P1,P2,P3);
+impl_currier_from!(P1,P2,P3,P4);
+impl_currier_from!(P1,P2,P3,P4,P5);
+impl_currier_from!(P1,P2,P3,P4,P5,P6);
+impl_currier_from!(P1,P2,P3,P4,P5,P6,P7);
+impl_currier_from!(P1,P2,P3,P4,P5,P6,P7,P8);
 
 
 #[test]
@@ -619,6 +625,13 @@ macro_rules! impl_currier_call {
 }
 
 impl_currier_call!(0 p1 P1, 1 p2 P2);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3, 3 p4 P4);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3, 3 p4 P4, 4 p5 P5);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3, 3 p4 P4, 4 p5 P5, 5 p6 P6);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3, 3 p4 P4, 4 p5 P5, 5 p6 P6, 6 p7 P7);
+impl_currier_call!(0 p1 P1, 1 p2 P2, 2 p3 P3, 3 p4 P4, 4 p5 P5, 5 p6 P6, 6 p7 P7, 7 p8 P8);
+
 
 #[cfg(test)]
 mod test_2 {

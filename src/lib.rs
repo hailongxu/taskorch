@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     collections::HashMap,
     sync::{atomic::{AtomicBool, Ordering}, Arc},
     thread::{self, JoinHandle}
@@ -16,7 +16,8 @@ pub use queue::{spawn_thread, Queue};
 use task::Task;
 pub use task::{
     Anchor,Kind,
-    TaskCurrier,TaskBuildNew,TaskBuildOp
+    TaskCurrier,TaskBuildNew,TaskBuildOp,
+    taskid_next,
 };
 
 
@@ -29,7 +30,7 @@ impl Jhandle {
         pool.insert_thread_handle(self)
     }
 
-    /// the thread exit once the current running task is finished
+    /// the thread exit once the current task complete
     pub fn exit_next(&mut self) {
         let _ = self.1.compare_exchange(
             false, true,
@@ -60,6 +61,7 @@ impl Pool {
         }
     }
 
+    /// for Queue.id and Thread.id not Task.id
     fn next_id(&mut self)->usize {
         self.id_next += 1;
         self.id_next
@@ -82,7 +84,18 @@ impl Pool {
         let c1map = self.c1map.clone();
         let c1queue = self.queues.values().next().unwrap().clone();
         let postdo = move |r: Box<dyn Any>| {
-            let (Some(to),Ok(r)) = (task.to,r.downcast::<C::R>()) else {
+            let Some(to) = task.to else {
+                return;
+            };
+            let actual_type = r.type_id();
+            let Ok(r) = r.downcast::<C::R>() else {
+                let _expected_type = TypeId::of::<C::R>();
+                let expected_type_name = std::any::type_name::<C::R>();
+                eprintln!(
+                    "to {to:?}.\ndowncast failed: expected {}, got {:?}",
+                    expected_type_name,
+                    actual_type
+                );
                 assert!(false,"failed to conver to R type");
                 return;
             };
@@ -148,7 +161,16 @@ impl Pool {
     /// block until all threads have exited
     pub fn wait(self) {
         for handle in self.jhands {
-            handle.1.0.join().unwrap();
+            if let Err(err) = handle.1.0.join() {
+                let err = if let Some(s) = err.downcast_ref::<&str>() {
+                    format!(" thread panic: {}", s)
+                } else if let Some(s) = err.downcast_ref::<String>() {
+                    format!("thead panic: {}", s)
+                } else {
+                    format!("thread panic (unknow)")
+                };
+                panic!("{}", err);
+            }
         }
     }
 }
