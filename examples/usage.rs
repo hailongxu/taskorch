@@ -1,8 +1,8 @@
 
 use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp, TaskSubmitter};
 
-mod debug;
-use debug::*;
+mod util;
+use util::*;
 
 /// construct Q1 with 2 thread
 /// construct Q2 with 1 thread
@@ -14,8 +14,8 @@ fn main() {
 
     // Step#2. create a queue
     let qid1 = pool.insert_queue(&Queue::new()).unwrap();
-    let submitter1 = pool.task_submitter(qid1).unwrap();
     let qid2 = pool.insert_queue(&Queue::new()).unwrap();
+    let submitter1 = pool.task_submitter(qid1).unwrap();
     let submitter2 = pool.task_submitter(qid2).unwrap();
 
     // Step#3. create tasks
@@ -32,136 +32,46 @@ fn main() {
 }
 
 fn add_task_to_q1_by(submitter:&TaskSubmitter) {
-    let hello = String::from("hello");
-    let task_hello = (||{
-            let ti = ti!("Q#(1)");
-            let hello = hello;
-            println!("{ti}  task free Fn {hello}");
-        }).task();
-    submitter.submit(task_hello);
+    const Q:&'static str = "Q#A";
+    const PAD:&'static str = "";
+    
+    submitter.submit((||ff(Q, PAD,"A-free","Hi, I am free.")).task());
 
-    let task_print1 = print1.task();
-    submitter.submit(task_print1);
-
-    // Exit task with one condition
+    // Exit task construction
     // This elegant approach ensures all threads exit one by one,
     // guaranteeing each thread can receive the exit message
-    let id_exit = submitter.submit(exit2_on.exit_task());
-    let id_exit = submitter.submit(exit1_on_to.exit_task().to(id_exit, 0));
+    let exit_task = |a:i32| exit_ff(Q,PAD,"Z1", a);
+    let id_exit = submitter.submit(exit_task.exit_task());
+    let exit_task = move|a:i32| exit_ffpr(Q, PAD,"Z2",a,"Z1");
+    let id_exit = submitter.submit(exit_task.exit_task().to(id_exit,0));
 
-    // Normal task with 8 conds and pass to exit task
-    let task8 = print_on8_and_to.task().to(id_exit,0);
-    let id8 = submitter.submit(task8);
+    let task = move|a:i32,b:i32| ffadd(Q, PAD,"Aadd", a, b, "Z2");
+    let id_add = submitter.submit(task.task().to(id_exit,0));
 
-    // below task pass cond to task id8
-    submitter.submit((||{let ti=ti!("Q#(1)");w!();println!("{ti}  task pass cond [1] to id8");1}).task().to(id8,0));
-    submitter.submit(task_hello_to.task().to(id8,1));
-    submitter.submit(pass_to.task().to(id8,2));
-    submitter.submit(pass_to.task().to(id8,3));
-    submitter.submit(pass_to.task().to(id8,4));
-    submitter.submit(pass_to.task().to(id8,5));
-    submitter.submit(pass_to.task().to(id8,6));
-    let id1 = submitter.submit(print_on1_and_to.task().to(id8,7));
-    submitter.submit(task_to.task().to(id1,0));
+    let task = move||ffr(Q,PAD,"A1",(2,"Aadd"));
+    let _ = submitter.submit(task.task().to(id_add, 0));
+
+    let task = move||ffr(Q,PAD,"A2",(3,"Aadd"));
+    let _ = submitter.submit(task.task().to(id_add, 1));
 }
 
 fn add_task_to_q2_by(submitter:&TaskSubmitter) {
-    let hello = String::from("hello");
-    let task_hello = (||{
-            w!(2);
-            let ti = ti!("Q#(2)");
-            let hello = hello;
-            println!("{ti}  task free Fn {hello}");
-        }).task();
-    submitter.submit(task_hello);
+    const Q:&'static str = "Q#B";
+    const PAD:&'static str = "";
+
+    submitter.submit((||ff(Q, PAD,"B-free", "Hi, I am free too.")).task());
 
     // Exit task with one condition
-    let id_exit = submitter.submit(exit2_on.exit_task());
+    let exit_task = |a:i32| exit_ff(Q, PAD,"Y1", a);
+    let id_exit = submitter.submit(exit_task.exit_task());
 
-    // Normal task with 8 conds and pass to exit task
-    let taskc2 = (|a:i32,b:i32| {
-            w!();
-            let r = a + b;
-            let ti = ti!("Q#(2)");
-            println!("{ti}  taskc2 recv ({a} {b}) and pass cond [{r}] to id_exit");
-            r
-    }).task().to(id_exit, 0);
-    let c2 = submitter.submit(taskc2);
+    let task = move|a:i32| ffpr(Q,PAD, "B1", a, (3, "Y1"));
+    let taskid = submitter.submit(task.task().to(id_exit,0));
 
-    // below task pass cond to task #c2
-    fn ff(ci:usize)->i32 {
-        let ti=ti!("Q#(2)");
-        w!();
-        println!("{ti}  task pass cond [1] to c2.#{ci}");
-        1
-    }
+    let task = move|a:i32| ffpr(Q,PAD, "B2", a, (4, "B1"));
+    let taskid = submitter.submit(task.task().to(taskid, 0));
 
-    let mut ci = 0;
-    let cf = move||ff(ci);
-    submitter.submit(cf.task().to(c2,ci));
-
-    ci = 1;
-    let cf = move||ff(ci);
-    submitter.submit(cf.task().to(c2,ci));
+    let task = move||ffr(Q,PAD,"B3",(4,"B2"));
+    let _ = submitter.submit(task.task().to(taskid,0));
 }
 
-// a free task
-fn print1() {
-    let ti = ti!("Q#(1)");
-    println!("{ti}  task free fn");
-}
-
-// gen a cond i32
-fn task_to()->i32 {
-    let r = 5;
-    let ti = ti!("Q#(1)");
-    println!("{ti}  task pass cond [{r:?}] to task-id2");
-    r
-}
-
-// gen a cond str
-fn task_hello_to()->&'static str {
-    let r = "hello";
-    let ti = ti!("Q#(1)");
-    println!("{ti}  task pass [{r:?}] to task-id8");
-    r
-}
-
-// which accept a cond and gen a cond
-fn print_on1_and_to(a:i32)->i32 {
-    let r = 1;
-    let ti = ti!("Q#(1)");
-    println!("{ti}  task wait cond ({a}), and pass cond [{r}] to task-id8");
-    assert_eq!(r,1);
-    r
-}
-
-fn pass_to()->i32 {
-    let ti = ti!("Q#(1)");
-    w!();
-    let r = 1;
-    println!("{ti}  task pass cond [{r}] to task-id8");
-    assert_eq!(r,1);
-    r
-}
-// which accept a cond and gen a cond
-fn print_on8_and_to(a:i32,b:&str,c:i32,d:i32,e:i32,f:i32,g:i32,h:i32)->i32 {
-    let r = a+c+d+e+f+g+h;
-    let ti = ti!("Q#(1)");
-    println!("{ti}  task id8 , wait cond ({a},{b},{c},{d},{e},{f},{g},{h}), and pass [{r}] to exit task");
-    assert_eq!(r, 7);
-    r
-}
-
-// accept a cond and exit
-fn exit1_on_to(a:i32)->i32 {
-    let r = a+1;
-    let ti = ti!("Q#(1)");
-    println!("{ti}  exit task received the cond ({a}) pass cond [{r}] to exit2 and EXIT");
-    r
-}
-fn exit2_on(a:i32)->i32 {
-    let ti = ti!("Q#(1)");
-    println!("{ti}  exit task received the cond ({a}) and EXIT");
-    a+1
-}

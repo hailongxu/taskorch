@@ -168,15 +168,15 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for (F,usize) {
     }
 }
 
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(Option<P1>,),R>>> for F {
-    fn task(self) -> (TaskCurrier<Currier<F,(Option<P1>,),R>>,Option<usize>) {
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for F {
+    fn task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
             kind: Kind::Normal,
         },None)
     }
-    fn exit_task(self) -> (TaskCurrier<Currier<F,(Option<P1>,),R>>,Option<usize>) {
+    fn exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
@@ -184,15 +184,15 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(Option<P1>,),R>>>
         },None)
     }
 }
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(Option<P1>,),R>>> for (F,usize) {
-    fn task(self) -> (TaskCurrier<Currier<F,(Option<P1>,),R>>,Option<usize>) {
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for (F,usize) {
+    fn task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
             kind: Kind::Normal,
         },Some(self.1))
     }
-    fn exit_task(self) -> (TaskCurrier<Currier<F,(Option<P1>,),R>>,Option<usize>) {
+    fn exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
@@ -203,8 +203,8 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(Option<P1>,),R>>>
 
 macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>> for F {
-            fn task(self) -> (TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>, Option<usize>) {
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for F {
+            fn task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
                     to: None,
@@ -212,7 +212,7 @@ macro_rules! impl_task_build_new {
                 }, None)
             }
             
-            fn exit_task(self) -> (TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>, Option<usize>) {
+            fn exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
                     to: None,
@@ -222,8 +222,8 @@ macro_rules! impl_task_build_new {
         }
 
 
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>> for (F, usize) {
-            fn task(self) -> (TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>, Option<usize>) {
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for (F, usize) {
+            fn task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
                     to: None,
@@ -231,7 +231,7 @@ macro_rules! impl_task_build_new {
                 }, Some(self.1))
             }
             
-            fn exit_task(self) -> (TaskCurrier<Currier<F, ($(Option<$P>,)+), R>>, Option<usize>) {
+            fn exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
                     to: None,

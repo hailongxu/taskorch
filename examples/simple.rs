@@ -1,5 +1,5 @@
 use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
-
+// create 3 tasks and run 
 fn main() {
     println!("----- test task orch -----");
 
@@ -13,23 +13,21 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    submitter.submit((||println!("task free say hello")).task());
+    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).task());
 
     // an exit task with ONE str cond
     let id_exit = submitter.submit(
-        (
-            |msg:&str|println!("exit task, recved ({msg:?}) and EXIT"),
-            1
+        (|msg:&str|
+            println!("exit-task:  received ({msg:?}) and EXIT")
         ).exit_task()
     );
-    assert_eq!(id_exit,1);
 
-    // normal task pass message to exit task
+    // another task pass message to exit task
     submitter.submit(
-        (move||{
-            let id_exit = &id_exit;
-            println!("normal pass [\"msg:exit\"] to: task#{id_exit}");
-            "msg:exit"
+        (||{
+            const MSG: &'static str = "exit";
+            println!("task 'AA':  I pass [\"{MSG}\"] to exit-task to exit");
+            MSG
         }).task().to(id_exit, 0)
     );
 

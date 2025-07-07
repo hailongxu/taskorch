@@ -38,6 +38,24 @@ Tasks can be executed in **two distinct modes**:
 
 ### Task Creation Code
 
+#### ⚠️ Type cast NOTE
+> **❗ Error-prone operation!**  
+> When forwarding a task result to a conditional task's condition point:  
+> - **Ensure** the result type **must be identical to** the condition type.  
+> - **Violation will trigger `panic`!**  
+```rust
+# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
+// Sample code explanation
+let cc = |a:i32,b:i8|{}; // the type of cond #0 is `i32`
+                         // the type of cond #1 is `i8` 
+let f0 = ||5i32; // the return type is `i32`
+let f1 = ||5i8;  // the return type is `i8`
+
+let task_cc = (cc,1).task(); /// taskid is explicitly set to 1
+let task_f0 = f0.task().to(1,0); // *** return type `i32` === cond #0 type `i32` ***
+let task_f1 = f1.task().to(1,1); // *** return type `i8` === cond #1 type `i8`   ***
+```
+
 #### Note
 NO `parameter`, NO `taskid` needed.  
 NO `return`, NO `target anchor` required.  
@@ -107,13 +125,13 @@ let task =
 **Exit task creation**  
 The only difference here is the use of `.exit_task()` instead of `.task()`.
 
-## Note
-As this is the initial development release (v0.1.0), the API is **highly unstable** and **will change** in subsequent versions.
+## ⚠️ API NOTE
+As this project is currently in early active development, the API is **highly unstable** and **will change** in subsequent versions.
 
 ## Example
 ```rust
 use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
-
+// create 3 tasks and run 
 fn main() {
     println!("----- test task orch -----");
 
@@ -127,23 +145,21 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    submitter.submit((||println!("task free say hello")).task());
+    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).task());
 
     // an exit task with ONE str cond
     let id_exit = submitter.submit(
-        (
-            |msg:&str|println!("exit task, recved ({msg:?}) and EXIT"),
-            1
+        (|msg:&str|
+            println!("exit-task:  received ({msg:?}) and EXIT")
         ).exit_task()
     );
-    assert_eq!(id_exit,1);
 
-    // normal task pass message to exit task
+    // another task pass message to exit task
     submitter.submit(
-        (move||{
-            let id_exit = &id_exit;
-            println!("normal pass [\"msg:exit\"] to: task#{id_exit}");
-            "msg:exit"
+        (||{
+            const MSG: &'static str = "exit";
+            println!("task 'AA':  I pass [\"{MSG}\"] to exit-task to exit");
+            MSG
         }).task().to(id_exit, 0)
     );
 

@@ -2,10 +2,43 @@
 
 use std::{any::Any, marker::PhantomData};
 
+trait TupleOpt {
+    type Opt;
+    const NONE: Self::Opt;
+}
+
+impl TupleOpt for () {
+    type Opt = ();
+    const NONE:Self::Opt = ();
+}
+
+impl<T1> TupleOpt for (T1,) {
+    type Opt = (Option<T1>,);
+    const NONE:Self::Opt = (None::<T1>,);
+}
+
+macro_rules! impl_tupleopt {
+    ($($T:ident),+) => {
+        impl<$($T),+> TupleOpt for ($($T,)+) {
+            type Opt = ($(Option<$T>,)+);
+            const NONE:Self::Opt = ($(None::<$T>,)+);
+        }
+    };
+}
+
+impl_tupleopt!(T1,T2);
+impl_tupleopt!(T1,T2,T3);
+impl_tupleopt!(T1,T2,T3,T4);
+impl_tupleopt!(T1,T2,T3,T4,T5);
+impl_tupleopt!(T1,T2,T3,T4,T5,T6);
+impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7);
+impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7,T8);
+
 // #[derive(Debug)]
-pub struct Currier<F,C,R> {
+pub struct Currier<F,C,R>
+where C:TupleOpt {
     f: F,
-    c: C,
+    c: C::Opt,
     r: PhantomData<R>,
 }
 
@@ -22,7 +55,7 @@ impl<F,R> From<F> for Currier<F,(),R>
     }
 }
 
-impl<P1,F,R> From<F> for Currier<F,(Option<P1>,),R>
+impl<P1,F,R> From<F> for Currier<F,(P1,),R>
     where
     F:FnOnce(P1)->R,
 {
@@ -37,7 +70,7 @@ impl<P1,F,R> From<F> for Currier<F,(Option<P1>,),R>
 
 macro_rules! impl_currier_from {
     ($($P:ident),+) => {
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> From<F> for Currier<F, ($(Option<$P>,)+), R> {
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> From<F> for Currier<F, ($($P,)+), R> {
             fn from(f: F) -> Self {
                 Self {
                     f,
@@ -313,7 +346,7 @@ mod test_0 {
 
 
 /// Fn(P1)->R
-impl<F,P1:Clone,R> Call for &Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> Call for &Currier<F,(P1,),R>
 where
     F: Fn(P1)->R,
     Self: CallParam
@@ -324,7 +357,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> CallMut for &Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> CallMut for &Currier<F,(P1,),R>
 where
     F: Fn(P1)->R,
     Self: CallParam
@@ -335,7 +368,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> CallOnce for &Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> CallOnce for &Currier<F,(P1,),R>
 where
     F: Fn(P1)->R,
     Self: CallParam
@@ -354,7 +387,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> CallMut for &mut Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> CallMut for &mut Currier<F,(P1,),R>
 where
     F: FnMut(P1)->R,
     Self: CallParam
@@ -364,7 +397,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> CallOnce for &mut Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> CallOnce for &mut Currier<F,(P1,),R>
 where
     F: FnMut(P1)->R,
     Self: CallParam
@@ -382,7 +415,7 @@ where
 }
 
 
-impl<F,P1,R> CallOnce for Currier<F,(Option<P1>,),R>
+impl<F,P1,R> CallOnce for Currier<F,(P1,),R>
 where
     F: FnOnce(P1)->R,
     Self: CallParam
@@ -399,7 +432,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> CallMut for Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> CallMut for Currier<F,(P1,),R>
 where
     F: FnMut(P1)->R,
     Self: CallParam,
@@ -409,7 +442,7 @@ where
     }
 }
 
-impl<F,P1:Clone,R> Call for Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone,R> Call for Currier<F,(P1,),R>
 where
     F: Fn(P1)->R,
     Self: CallParam,
@@ -420,7 +453,7 @@ where
 }
 
 
-impl<F,P1:Clone+'static,R> CallParam for Currier<F,(Option<P1>,),R>
+impl<F,P1:Clone+'static,R> CallParam for Currier<F,(P1,),R>
 {
     fn set(&mut self, i:usize, value: &dyn Any)->bool {
         let (Some(p1),true) = (value.downcast_ref::<P1>(), i==0) else {
@@ -482,7 +515,7 @@ mod test_1 {
 
 macro_rules! impl_currier_call {
     ($($i:tt $p:ident $P:ident),+) => {
-        impl<F,$($P:Clone),+, R> Call for &Currier<F,($(Option<$P>),+),R>
+        impl<F,$($P:Clone),+, R> Call for &Currier<F,($($P),+),R>
         where
             F: Fn($($P),+)->R,
             Self: CallParam
@@ -494,7 +527,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+,R> CallMut for &Currier<F,($(Option<$P>),+),R>
+        impl<F,$($P:Clone),+,R> CallMut for &Currier<F,($($P),+),R>
         where
             F: Fn($($P),+)->R,
             Self: CallParam
@@ -506,7 +539,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+, R> CallOnce for &Currier<F,($(Option<$P>),+),R>
+        impl<F,$($P:Clone),+, R> CallOnce for &Currier<F,($($P),+),R>
         where
             F: Fn($($P),+)->R,
             Self: CallParam
@@ -526,7 +559,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+,R> CallMut for &mut Currier<F,($(Option<$P>,)+),R>
+        impl<F,$($P:Clone),+,R> CallMut for &mut Currier<F,($($P,)+),R>
         where
             F: FnMut($($P),+)->R,
             Self: CallParam
@@ -538,7 +571,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+,R> CallOnce for &mut Currier<F,($(Option<$P>,)+),R>
+        impl<F,$($P:Clone),+,R> CallOnce for &mut Currier<F,($($P,)+),R>
         where
             F: FnMut($($P),+)->R,
             Self: CallParam
@@ -558,7 +591,7 @@ macro_rules! impl_currier_call {
         }
 
 
-        impl<F,$($P),+,R> CallOnce for Currier<F,($(Option<$P>,)+),R>
+        impl<F,$($P),+,R> CallOnce for Currier<F,($($P,)+),R>
         where
             F: FnOnce($($P),+)->R,
             Self: CallParam
@@ -577,7 +610,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+,R> CallMut for Currier<F,($(Option<$P>,)+),R>
+        impl<F,$($P:Clone),+,R> CallMut for Currier<F,($($P,)+),R>
         where
             F: FnMut($($P),+)->R,
             Self: CallParam,
@@ -589,7 +622,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone),+,R> Call for Currier<F,($(Option<$P>),+),R>
+        impl<F,$($P:Clone),+,R> Call for Currier<F,($($P),+),R>
         where
             F: Fn($($P),+)->R,
             Self: CallParam,
@@ -601,7 +634,7 @@ macro_rules! impl_currier_call {
             }
         }
 
-        impl<F,$($P:Clone+'static),+,R> CallParam for Currier<F,($(Option<$P>),+),R>
+        impl<F,$($P:Clone+'static),+,R> CallParam for Currier<F,($($P),+),R>
         {
             fn set(&mut self, i:usize, value: &dyn Any)->bool {
                 match i {

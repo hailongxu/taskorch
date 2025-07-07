@@ -86,8 +86,8 @@ impl Pool {
     /// returns the queue ID recorded in pool
     pub fn insert_queue(&mut self,queue:&Queue)->Option<usize> {
         let id = self.next_id();
-        let r = self.queues.insert(id, queue.clone());
-        dbg!(r.is_some());
+        // update the queue
+        let _r = self.queues.insert(id, queue.clone());
         Some(id)
     }
 
@@ -187,4 +187,17 @@ impl TaskSubmitter {
             id
         }
     }
+}
+
+#[test]
+fn test_conv() {
+    use std::any::Any;
+    let a = 3i32;
+    let a: &dyn Any = &a;
+    let b = a.downcast_ref::<i32>();
+    assert!(b.is_some());
+    let b = a.downcast_ref::<i8>();
+    assert!(b.is_none());
+    let b = a.downcast_ref::<i64>();
+    assert!(b.is_none());
 }
