@@ -18,7 +18,6 @@ pub use task::{
     Anchor,Kind,
     TaskCurrier,TaskBuildNew,TaskBuildOp
 };
-pub use curry::Currier;
 
 
 /// a handle to a thread spawned for queue

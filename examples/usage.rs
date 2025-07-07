@@ -1,4 +1,4 @@
-use taskorch::{TaskCurrier, Pool, Queue, Anchor, TaskBuildNew, TaskBuildOp};
+use taskorch::{Pool, Queue, Anchor, TaskBuildNew, TaskBuildOp};
 
 fn main() {
     println!("----- test task orch -----");
@@ -13,28 +13,29 @@ fn main() {
 
     // task#1. add a free task closure
     let hello = String::from("hello");
-    let task_hello = TaskCurrier::new(||{ let hello = hello; println!("task free Fn {hello}");});
+    let task_hello = (||{ let hello = hello; println!("task free Fn {hello}");})
+    .task();
     pool.add(task_hello);
 
     // task#2. add a free task function
-    let task_print1 = TaskCurrier::new(print1);
+    let task_print1 = print1.task();
     pool.add(task_print1);
 
     // task#3. add a task with cond
-    let id_exit = pool.add(TaskCurrier::new(exit_on).exit());
+    let id_exit = pool.add(exit_on.exit_task());
 
     // task#4. add a task which get cond and gen cond to <task.id_exit>
-    let task2 = TaskCurrier::new(print2_on_and_to).to(Anchor(id_exit,0));
+    let task2 = print2_on_and_to.task().to(Anchor(id_exit,0));
     let id2 = pool.add(task2);
 
     // task#5. add a task which get cond and gen cond to <task.id2>
-    let id = pool.add(TaskCurrier::new(print_on_and_to).to(Anchor(id2,0)));
+    let id = pool.add(print_on_and_to.task().to(Anchor(id2,0)));
     
     // task#6. add a task which gen cond to <task.id>
-    pool.add(TaskCurrier::new(task_to).to(Anchor(id,0)));
+    pool.add(task_to.task().to(Anchor(id,0)));
 
       // task#7. add a task which gen cond to <task.id2>
-    pool.add(TaskCurrier::new(task_hello_to).to(Anchor(id2,1)));
+    pool.add(task_hello_to.task().to(Anchor(id2,1)));
   
     // Step#4. start a thread and run
     pool.spawn_thread_for(qid);

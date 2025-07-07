@@ -35,18 +35,22 @@ impl<P1,F,R> From<F> for Currier<F,(Option<P1>,),R>
     }
 }
 
-impl<P1,P2,F,R> From<F> for Currier<F,(Option<P1>,Option<P2>,),R>
-    where
-    F:FnOnce(P1,P2)->R,
-{
-    fn from(f: F) -> Self {
-        Self {
-            f,
-            c: (None::<P1>,None::<P2>),
-            r: PhantomData,
+macro_rules! impl_currier_from {
+    ($($P:ident),+) => {
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> From<F> for Currier<F, ($(Option<$P>,)+), R> {
+            fn from(f: F) -> Self {
+                Self {
+                    f,
+                    c: ($(None::<$P>,)+),
+                    r: PhantomData,
+                }
+            }
         }
-    }
+    };
 }
+
+impl_currier_from!(P1,P2);
+
 
 #[test]
 fn test2() {
@@ -470,168 +474,151 @@ mod test_1 {
     }
 }
 
-
-/// Fn(P1,P2)->R
-impl<F,P1:Clone,P2:Clone,R> Call for &Currier<F,(Option<P1>,Option<P2>),R>
-where
-    F: Fn(P1,P2)->R,
-    Self: CallParam
-{
-    fn call(&self) -> F::Output {
-        let p1 = self.c.0.as_ref().unwrap();
-        let p2 = self.c.1.as_ref().unwrap();
-        (self.f)(
-            p1.clone(),
-            p2.clone()
-        )
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> CallMut for &Currier<F,(Option<P1>,Option<P2>),R>
-where
-    F: Fn(P1,P2)->R,
-    Self: CallParam
-{
-    fn call_mut(&mut self) -> F::Output {
-        let p1 = self.c.0.as_ref().unwrap();
-        let p2 = self.c.1.as_ref().unwrap();
-        (self.f)(
-            p1.clone(),
-            p2.clone()
-        )
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> CallOnce for &Currier<F,(Option<P1>,Option<P2>,),R>
-where
-    F: Fn(P1,P2)->R,
-    Self: CallParam
-{
-    type R = F::Output;
-
-    fn call_once(self) -> F::Output {
-        let p1 = self.c.0.as_ref().unwrap();
-        let p2 = self.c.1.as_ref().unwrap();
-        (self.f)(
-            p1.clone(),
-            p2.clone()
-        )
-    }
-    fn count(&self)->usize {
-        2
-    }
-    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
-        Some(self)
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> CallMut for &mut Currier<F,(Option<P1>,Option<P2>,),R>
-where
-    F: FnMut(P1,P2)->R,
-    Self: CallParam
-{
-    fn call_mut(&mut self) -> F::Output {
-        (self.f)(
-            self.c.0.as_ref().unwrap().clone(),
-            self.c.1.as_ref().unwrap().clone())
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> CallOnce for &mut Currier<F,(Option<P1>,Option<P2>,),R>
-where
-    F: FnMut(P1,P2)->R,
-    Self: CallParam
-{
-    type R = F::Output;
-    fn call_once(self) -> F::Output {
-        (self.f)(
-            self.c.0.as_ref().unwrap().clone(),
-            self.c.1.as_ref().unwrap().clone(),
-        )
-    }
-    fn count(&self)->usize {
-        2
-    }
-    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
-        Some(self)
-    }
-}
-
-
-impl<F,P1,P2,R> CallOnce for Currier<F,(Option<P1>,Option<P2>,),R>
-where
-    F: FnOnce(P1,P2)->R,
-    Self: CallParam
-{
-    type R = R;
-    fn call_once(self) -> F::Output {
-        (self.f)(
-            self.c.0.unwrap(),
-            self.c.1.unwrap(),
-        )
-    }
-    fn count(&self)->usize {
-        2
-    }
-    fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
-        Some(self)
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> CallMut for Currier<F,(Option<P1>,Option<P2>,),R>
-where
-    F: FnMut(P1,P2)->R,
-    Self: CallParam,
-{
-    fn call_mut(&mut self) -> F::Output {
-        (self.f)(
-            self.c.0.as_ref().unwrap().clone(),
-            self.c.1.as_ref().unwrap().clone(),
-        )
-    }
-}
-
-impl<F,P1:Clone,P2:Clone,R> Call for Currier<F,(Option<P1>,Option<P2>),R>
-where
-    F: Fn(P1,P2)->R,
-    Self: CallParam,
-{
-    fn call(&self) -> F::Output {
-        (self.f)(
-            self.c.0.as_ref().unwrap().clone(),
-            self.c.1.as_ref().unwrap().clone(),
-        )
-    }
-}
-
-
-impl<F,P1:Clone+'static,P2:Clone+'static,R> CallParam for Currier<F,(Option<P1>,Option<P2>),R>
-{
-    fn set(&mut self, i:usize, value: &dyn Any)->bool {
-        match i {
-            0 => {
-                let Some(p1) = value.downcast_ref::<P1>() else {
-                    return false;
-                };
-                self.c.0 = Some(p1.clone());
-                true
+macro_rules! impl_currier_call {
+    ($($i:tt $p:ident $P:ident),+) => {
+        impl<F,$($P:Clone),+, R> Call for &Currier<F,($(Option<$P>),+),R>
+        where
+            F: Fn($($P),+)->R,
+            Self: CallParam
+        {
+            fn call(&self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone(),)+
+                )
             }
-            1 => {
-                let Some(p2) = value.downcast_ref::<P2>() else {
-                    return false;
-                };
-                self.c.1 = Some(p2.clone());
-                true
-            }
-            _ => false
         }
-    }
-    fn is_full(&self)->bool {
-        self.c.0.is_some() &&
-        self.c.1.is_some()
-    }
+
+        impl<F,$($P:Clone),+,R> CallMut for &Currier<F,($(Option<$P>),+),R>
+        where
+            F: Fn($($P),+)->R,
+            Self: CallParam
+        {
+            fn call_mut(&mut self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone()),+
+                )
+            }
+        }
+
+        impl<F,$($P:Clone),+, R> CallOnce for &Currier<F,($(Option<$P>),+),R>
+        where
+            F: Fn($($P),+)->R,
+            Self: CallParam
+        {
+            type R = F::Output;
+
+            fn call_once(self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone()),+
+                )
+            }
+            fn count(&self)->usize {
+                [$($i),+].len()
+            }
+            fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+                Some(self)
+            }
+        }
+
+        impl<F,$($P:Clone),+,R> CallMut for &mut Currier<F,($(Option<$P>,)+),R>
+        where
+            F: FnMut($($P),+)->R,
+            Self: CallParam
+        {
+            fn call_mut(&mut self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone()),+
+                )
+            }
+        }
+
+        impl<F,$($P:Clone),+,R> CallOnce for &mut Currier<F,($(Option<$P>,)+),R>
+        where
+            F: FnMut($($P),+)->R,
+            Self: CallParam
+        {
+            type R = F::Output;
+            fn call_once(self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone()),+
+                )
+            }
+            fn count(&self)->usize {
+                [$($i),+].len()
+            }
+            fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+                Some(self)
+            }
+        }
+
+
+        impl<F,$($P),+,R> CallOnce for Currier<F,($(Option<$P>,)+),R>
+        where
+            F: FnOnce($($P),+)->R,
+            Self: CallParam
+        {
+            type R = R;
+            fn call_once(self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.unwrap(),)+
+                )
+            }
+            fn count(&self)->usize {
+                [$($i),+].len()
+            }
+            fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
+                Some(self)
+            }
+        }
+
+        impl<F,$($P:Clone),+,R> CallMut for Currier<F,($(Option<$P>,)+),R>
+        where
+            F: FnMut($($P),+)->R,
+            Self: CallParam,
+        {
+            fn call_mut(&mut self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone(),)+
+                )
+            }
+        }
+
+        impl<F,$($P:Clone),+,R> Call for Currier<F,($(Option<$P>),+),R>
+        where
+            F: Fn($($P),+)->R,
+            Self: CallParam,
+        {
+            fn call(&self) -> F::Output {
+                (self.f)(
+                    $(self.c.$i.as_ref().unwrap().clone(),)+
+                )
+            }
+        }
+
+        impl<F,$($P:Clone+'static),+,R> CallParam for Currier<F,($(Option<$P>),+),R>
+        {
+            fn set(&mut self, i:usize, value: &dyn Any)->bool {
+                match i {
+                    $(
+                    $i => {
+                        let Some($p) = value.downcast_ref::<$P>() else {
+                            return false;
+                        };
+                        self.c.$i = Some($p.clone());
+                        true
+                    }
+                    )+
+                    _ => false
+                }
+            }
+            fn is_full(&self)->bool {
+                $(self.c.$i.is_some()) &&+
+            }
+        }
+    };
 }
 
+impl_currier_call!(0 p1 P1, 1 p2 P2);
 
 #[cfg(test)]
 mod test_2 {
