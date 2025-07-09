@@ -122,14 +122,15 @@ fn main() {
 
     // Step#2. create a queue
     let qid = pool.insert_queue(&Queue::new()).unwrap();
+    let submitter = pool.task_submitter(qid).unwrap();
 
     // Step#3. create tasks
 
     // an indepent task
-    pool.add((||println!("task free say hello")).task());
+    submitter.submit((||println!("task free say hello")).task());
 
     // an exit task with ONE str cond
-    let id_exit = pool.add(
+    let id_exit = submitter.submit(
         (
             |msg:&str|println!("exit task, recved ({msg:?}) and EXIT"),
             1
@@ -138,9 +139,8 @@ fn main() {
     assert_eq!(id_exit,1);
 
     // normal task pass message to exit task
-    pool.add(
-        (
-        move||{
+    submitter.submit(
+        (move||{
             let id_exit = &id_exit;
             println!("normal pass [\"msg:exit\"] to: task#{id_exit}");
             "msg:exit"
@@ -151,7 +151,7 @@ fn main() {
     pool.spawn_thread_for(qid);
 
     // Step#5. wait until all finished
-    pool.wait();
+    pool.join();
 }
 ```
 For a more complex demo, see the `usage` example.

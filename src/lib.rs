@@ -8,8 +8,8 @@ use std::{
 };
 
 mod curry;
-mod task;
 mod queue;
+mod task;
 use curry::CallOnce;
 use queue::{when_ci_comed, C1map};
 pub use queue::{spawn_thread, Queue};
@@ -38,7 +38,7 @@ impl Jhandle {
     }
 
     /// block until the thread has exited
-    pub fn wait(self)->thread::Result<()> {
+    pub fn join(self)->thread::Result<()> {
         self.0.join()
     }
 }
@@ -67,52 +67,10 @@ impl Pool {
         self.id_next
     }
 
-    /// Enqueues a new task for future scheduling
-    ///
-    /// # argments
-    /// * `task` - The task to be added, wrapped in a `TaskCurrier`.
-    /// * `taskid` - An optional identifier for the task, used for tracking.
-    /// 
-    /// # returns
-    /// * `usize` - The ID of the task
-    pub fn add<C>(&self,(task,taskid):(TaskCurrier<C>,Option<usize>))->usize
-        where
-        TaskCurrier<C>: Task,
-        C: CallOnce + Send + 'static,
-        C::R: 'static,
-    {
+    pub fn task_submitter(&self, qid:usize)->Option<TaskSubmitter> {
+        let queue = self.queues.get(&qid)?.clone();
         let c1map = self.c1map.clone();
-        let c1queue = self.queues.values().next().unwrap().clone();
-        let postdo = move |r: Box<dyn Any>| {
-            let Some(to) = task.to else {
-                return;
-            };
-            let actual_type = r.type_id();
-            let Ok(r) = r.downcast::<C::R>() else {
-                let _expected_type = TypeId::of::<C::R>();
-                let expected_type_name = std::any::type_name::<C::R>();
-                eprintln!(
-                    "to {to:?}.\ndowncast failed: expected {}, got {:?}",
-                    expected_type_name,
-                    actual_type
-                );
-                assert!(false,"failed to conver to R type");
-                return;
-            };
-            let r: C::R = *r;
-            when_ci_comed(&to, r, c1map.clone(), c1queue);
-        };
-        let postdo = Box::new(postdo);
-
-        if 0 == task.currier.count() {
-            let task = Box::new(task);
-            let (_,normal) = self.queues.iter().next().unwrap();
-            normal.add_boxtask(task,postdo);
-            usize::MAX
-        } else {
-            let id = self.c1map.insert(task, postdo,taskid).unwrap();
-            id
-        }
+        TaskSubmitter {queue, c1map}.into()
     }
 
     /// gets the ref to Queue by ID
@@ -159,7 +117,7 @@ impl Pool {
     }
 
     /// block until all threads have exited
-    pub fn wait(self) {
+    pub fn join(self) {
         for handle in self.jhands {
             if let Err(err) = handle.1.0.join() {
                 let err = if let Some(s) = err.downcast_ref::<&str>() {
@@ -171,6 +129,62 @@ impl Pool {
                 };
                 panic!("{}", err);
             }
+        }
+    }
+}
+
+
+/// Handles task submission to a specific queue
+#[derive(Clone)]
+pub struct TaskSubmitter {
+    queue: Queue,
+    c1map: C1map,
+}
+
+impl TaskSubmitter {
+    /// Enqueues a new task for future scheduling
+    ///
+    /// # argments
+    /// * `task` - The task to be added, wrapped in a `TaskCurrier`.
+    /// * `taskid` - An optional identifier for the task, used for tracking.
+    ///
+    /// # returns
+    /// * `usize` - The ID of the task
+    pub fn submit<C>(&self,(task,taskid):(TaskCurrier<C>,Option<usize>))->usize
+        where
+        TaskCurrier<C>: Task,
+        C: CallOnce + Send + 'static,
+        C::R: 'static,
+    {
+        let c1map = self.c1map.clone();
+        let c1queue = self.queue.clone();
+        let postdo = move |r: Box<dyn Any>| {
+            let Some(to) = task.to else {
+                return;
+            };
+            let actual_type = r.type_id();
+            let Ok(r) = r.downcast::<C::R>() else {
+                let _expected_type = TypeId::of::<C::R>();
+                let expected_type_name = std::any::type_name::<C::R>();
+                eprintln!(
+                    "to {to:?}.\ndowncast failed: expected {}, got {:?}",
+                    expected_type_name, actual_type
+                );
+                panic!("failed to conver to R type");
+                return;
+            };
+            let r: C::R = *r;
+            when_ci_comed(&to, r, c1map.clone(), c1queue);
+        };
+        let postdo = Box::new(postdo);
+
+        if 0 == task.currier.count() {
+            let task = Box::new(task);
+            self.queue.add_boxtask(task,postdo);
+            usize::MAX
+        } else {
+            let id = self.c1map.insert(task, postdo,taskid).unwrap();
+            id
         }
     }
 }

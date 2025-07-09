@@ -1,8 +1,11 @@
 use std::{
     any::Any,
     collections::{HashMap, VecDeque},
-    sync::{atomic::{AtomicBool, Ordering},Arc,
-    Condvar, Mutex}, thread
+    sync::{
+        Arc,Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
 };
 
 use crate::{task::{Task, Kind, Anchor}, Jhandle};
@@ -79,8 +82,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
                 if let Kind::Exit = kind {
                     break;
                 }
-            }
-            else {
+            } else {
                 let _unused = queue.1.wait(m);
             }
         }

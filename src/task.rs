@@ -1,7 +1,7 @@
 
 use std::{
     any::Any,
-    sync::atomic::{AtomicUsize, Ordering}
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::curry::{CallOnce, CallParam, Currier};
@@ -33,7 +33,7 @@ impl TaskIdGen {
     }
 }
 
-/// gen a task ID
+/// Generate a task ID
 pub fn taskid_next()->usize {
     TASKID.next()
 }
@@ -309,7 +309,14 @@ fn test_task_run() {
     let tp8 = 8;
     let tr8 = tp1+tp5+tp6+tp7+tp8;
     let c8 = (
-        |p1:i32,p2:&'static str,p3:String,p4:Vec<i32>,p5:i32,p6:i32,p7:i32,p8:i32|{
+        |p1:i32,
+         p2:&'static str,
+         p3:String,
+         p4:Vec<i32>,
+         p5:i32,
+         p6:i32,
+         p7:i32,
+         p8:i32|{
         assert_eq!(p1,tp1);
         assert_eq!(p2,tp2);
         assert_eq!(p3,tp3);
