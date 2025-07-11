@@ -35,43 +35,43 @@ fn add_task_to_q1_by(submitter:&TaskSubmitter) {
     const Q:&'static str = "Q#A";
     const PAD:&'static str = "";
     
-    submitter.submit((||ff(Q, PAD,"A-free","Hi, I am free.")).task());
+    submitter.submit((||ff(Q, PAD,"A-free","Hi, I am free.")).into_task());
 
     // Exit task construction
     // This elegant approach ensures all threads exit one by one,
     // guaranteeing each thread can receive the exit message
     let exit_task = |a:i32| exit_ff(Q,PAD,"Z1", a);
-    let id_exit = submitter.submit(exit_task.exit_task());
+    let id_exit = submitter.submit(exit_task.into_exit_task());
     let exit_task = move|a:i32| exit_ffpr(Q, PAD,"Z2",a,"Z1");
-    let id_exit = submitter.submit(exit_task.exit_task().to(id_exit,0));
+    let id_exit = submitter.submit(exit_task.into_exit_task().to(id_exit,0));
 
     let task = move|a:i32,b:i32| ffadd(Q, PAD,"Aadd", a, b, "Z2");
-    let id_add = submitter.submit(task.task().to(id_exit,0));
+    let id_add = submitter.submit(task.into_task().to(id_exit,0));
 
     let task = move||ffr(Q,PAD,"A1",(2,"Aadd"));
-    let _ = submitter.submit(task.task().to(id_add, 0));
+    let _ = submitter.submit(task.into_task().to(id_add, 0));
 
     let task = move||ffr(Q,PAD,"A2",(3,"Aadd"));
-    let _ = submitter.submit(task.task().to(id_add, 1));
+    let _ = submitter.submit(task.into_task().to(id_add, 1));
 }
 
 fn add_task_to_q2_by(submitter:&TaskSubmitter) {
     const Q:&'static str = "Q#B";
     const PAD:&'static str = "";
 
-    submitter.submit((||ff(Q, PAD,"B-free", "Hi, I am free too.")).task());
+    submitter.submit((||ff(Q, PAD,"B-free", "Hi, I am free too.")).into_task());
 
     // Exit task with one condition
     let exit_task = |a:i32| exit_ff(Q, PAD,"Y1", a);
-    let id_exit = submitter.submit(exit_task.exit_task());
+    let id_exit = submitter.submit(exit_task.into_exit_task());
 
     let task = move|a:i32| ffpr(Q,PAD, "B1", a, (3, "Y1"));
-    let taskid = submitter.submit(task.task().to(id_exit,0));
+    let taskid = submitter.submit(task.into_task().to(id_exit,0));
 
     let task = move|a:i32| ffpr(Q,PAD, "B2", a, (4, "B1"));
-    let taskid = submitter.submit(task.task().to(taskid, 0));
+    let taskid = submitter.submit(task.into_task().to(taskid, 0));
 
     let task = move||ffr(Q,PAD,"B3",(4,"B2"));
-    let _ = submitter.submit(task.task().to(taskid,0));
+    let _ = submitter.submit(task.into_task().to(taskid,0));
 }
 

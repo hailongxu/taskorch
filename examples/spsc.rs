@@ -33,7 +33,7 @@ fn main() {
 fn consume_task_prompt(submitter:&TaskSubmitter) {
     const Q:&'static str = "consumer";
     const PAD:&'static str = "  ";
-    submitter.submit((||ff("comsumer", PAD, "init", "waiting task to do")).task());
+    submitter.submit((||ff("comsumer", PAD, "init", "waiting task to do")).into_task());
 }
 
 
@@ -42,26 +42,26 @@ fn produce_task(submitter:TaskSubmitter) {
     const PAD:&'static str = "  ";
 
     prompt("warn");
-    submitter.submit((||ff(Q, PAD,"warn", "prepare to work.")).task());
+    submitter.submit((||ff(Q, PAD,"warn", "prepare to work.")).into_task());
 
     // Exit task with one condition
     const XN: &'static str = "X";
     let exit_task = |a:i32| exit_ff(Q, PAD,XN, a);
     prompt(XN);
-    let id_exit = submitter.submit(exit_task.exit_task());
+    let id_exit = submitter.submit(exit_task.into_exit_task());
 
     const AN: &'static str = "Aadd";
     let task = move|a:i32,b:i32| ffadd(Q,PAD, AN, a, b, XN);
     prompt(AN);
-    let id_add = submitter.submit(task.task().to(id_exit,0));
+    let id_add = submitter.submit(task.into_task().to(id_exit,0));
 
     let task = move||ffr(Q,PAD,"A1",(2,AN));
     prompt("A1");
-    let _ = submitter.submit(task.task().to(id_add, 0));
+    let _ = submitter.submit(task.into_task().to(id_add, 0));
 
     let task = move||ffr(Q,PAD,"A2",(3,AN));
     prompt("A2");
-    let _ = submitter.submit(task.task().to(id_add, 1));
+    let _ = submitter.submit(task.into_task().to(id_add, 1));
 }
 
 fn prompt(taskname:&'static str) {

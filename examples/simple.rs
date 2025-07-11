@@ -13,13 +13,13 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).task());
+    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).into_task());
 
     // an exit task with ONE str cond
     let id_exit = submitter.submit(
         (|msg:&str|
             println!("exit-task:  received ({msg:?}) and EXIT")
-        ).exit_task()
+        ).into_exit_task()
     );
 
     // another task pass message to exit task
@@ -28,7 +28,7 @@ fn main() {
             const MSG: &'static str = "exit";
             println!("task 'AA':  I pass [\"{MSG}\"] to exit-task to exit");
             MSG
-        }).task().to(id_exit, 0)
+        }).into_task().to(id_exit, 0)
     );
 
     // Step#4. start a thread and run

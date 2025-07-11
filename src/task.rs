@@ -105,12 +105,23 @@ pub trait TaskBuildNew<TC> {
     /// A tuple containing:
     /// - The `Task Currier` (`TC`)
     /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
-    fn task(self)->(TC,Option<usize>);
+    fn into_task(self)->(TC,Option<usize>);
+
+    #[deprecated(note = "Use `into_task()` instead for clearer ownership semantic. `task()` will be removed in the next release.")]
+    fn task(self)->(TC,Option<usize>) where Self:Sized {
+        self.into_task()
+    }
+
     /// construct a exit task
     /// # Note
-    /// This is functionally identical to `task()`, with the additional behavior of thread exit gracefully
+    /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
     /// after task completion.
-    fn exit_task(self)->(TC,Option<usize>);
+    fn into_exit_task(self)->(TC,Option<usize>);
+
+    #[deprecated(note = "Use `into_exit_task()` instead for clearer ownership semantic. `exit_task()` will be removed in the next release.")]
+    fn exit_task(self)->(TC,Option<usize>) where Self:Sized {
+        self.into_exit_task()
+    }
 }
 /// TaskBuildOp provides target anchor configuration.
 pub trait TaskBuildOp<Currier> {
@@ -136,14 +147,14 @@ impl<Currier> TaskBuildOp<Currier> for (TaskCurrier<Currier>,Option<usize>) {
 
 /// constructs a task without cond
 impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for F {
-    fn task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
             kind: Kind::Normal,
         },None)
     }
-    fn exit_task(self)->(TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
@@ -152,14 +163,14 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for F {
     }
 }
 impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for (F,usize) {
-    fn task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
             kind: Kind::Normal,
         },Some(self.1))
     }
-    fn exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
@@ -169,14 +180,14 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for (F,usize) {
 }
 
 impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for F {
-    fn task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
             kind: Kind::Normal,
         },None)
     }
-    fn exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self),
             to: None,
@@ -185,14 +196,14 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for F {
     }
 }
 impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for (F,usize) {
-    fn task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
             kind: Kind::Normal,
         },Some(self.1))
     }
-    fn exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
             to: None,
@@ -204,7 +215,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for (F,
 macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
         impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for F {
-            fn task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
                     to: None,
@@ -212,7 +223,7 @@ macro_rules! impl_task_build_new {
                 }, None)
             }
             
-            fn exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
                     to: None,
@@ -223,7 +234,7 @@ macro_rules! impl_task_build_new {
 
 
         impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for (F, usize) {
-            fn task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
                     to: None,
@@ -231,7 +242,7 @@ macro_rules! impl_task_build_new {
                 }, Some(self.1))
             }
             
-            fn exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
                     to: None,
@@ -254,18 +265,18 @@ impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7,P8);
 #[test]
 fn test_task_new() {
     let f = ||();
-    let t = f.exit_task();
+    let t = f.into_exit_task();
     let t :Box<dyn Task> = Box::new(t.0);
     t.run();
 
-    let t = f.task();
+    let t = f.into_task();
     let t :Box<dyn Task> = Box::new(t.0);
     t.run();
 
     let s = String::new();
     let f = ||{let _s=s;};
 
-    let t = f.task();
+    let t = f.into_task();
     let t :Box<dyn Task> = Box::new(t.0);
     t.run();
 }
@@ -274,7 +285,7 @@ fn test_task_new() {
 #[test]
 fn test_task_new_panic() {
     let f = |_:i32,_:i32|{};
-    let t = f.task();
+    let t = f.into_task();
     let t :Box<dyn Task> = Box::new(t.0);
     // the param is not set, so panic
     t.run();
@@ -293,7 +304,7 @@ fn test_task_postdo() {
 #[test]
 fn test_task_run() {
     // one cond
-    let c1 = (|_p:i32|println!("get c1")).task();
+    let c1 = (|_p:i32|println!("get c1")).into_task();
     let mut c1: Box<dyn Task> = Box::new(c1.0);
     c1.as_param_mut().map(|e|e.set(0, &5));
     c1.run();
@@ -327,7 +338,7 @@ fn test_task_run() {
         assert_eq!(p8,tp8);
         println!("recevied cond: {p1},{p2},{p3},{p4:?},{p5},{p6},{p7},{p8},");
         p1+p5+p6+p7+p8
-    }).task();
+    }).into_task();
     let mut c8: Box<dyn Task> = Box::new(c8.0);
     c8.as_param_mut().map(
         |e|

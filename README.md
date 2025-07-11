@@ -32,7 +32,7 @@ Tasks can be executed in **two distinct modes**:
 
 ### Building a Task (3-Step Process)
 1. **Prepare**:  Define a function or closure.
-2. **Create**:  Create the task chained by `.task()`.
+2. **Create**:  Create the task chained by `.into_task()`.
 3. **Notify (Optional)**:  Chain tasks by calling `to()` to set a `target anchor`.  
    *This step can be skipped if the task does not produce any output.*
 
@@ -51,9 +51,9 @@ let cc = |a:i32,b:i8|{}; // the type of cond #0 is `i32`
 let f0 = ||5i32; // the return type is `i32`
 let f1 = ||5i8;  // the return type is `i8`
 
-let task_cc = (cc,1).task(); /// taskid is explicitly set to 1
-let task_f0 = f0.task().to(1,0); // *** return type `i32` === cond #0 type `i32` ***
-let task_f1 = f1.task().to(1,1); // *** return type `i8` === cond #1 type `i8`   ***
+let task_cc = (cc,1).into_task(); // taskid is explicitly set to 1
+let task_f0 = f0.into_task().to(1,0); // *** return type `i32` === cond #0 type `i32` ***
+let task_f1 = f1.into_task().to(1,1); // *** return type `i8` === cond #1 type `i8`   ***
 ```
 
 #### Note
@@ -64,24 +64,24 @@ NO `return`, NO `target anchor` required.
 ```rust
 # use taskorch::TaskBuildNew as _;
 let task = 
-    (||{})          // <1> Define the body
-        .task();    // <2> Create a task from the given closure.
-                    // <3> `to()` skipped, as there is no return value
+    (||{})            // <1> Define the body
+        .into_task(); // <2> Create a task from the given closure.
+                      // <3> `to()` skipped, as there is no return value
 ```
 
 **Case 2**:  [ **No** parameter, **With** return ]  
 ```rust
 # use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
 let task = 
-    (||{3})         // <1> Define the body
-        .task()     // <2> Create a task from the given closure.
-        .to(2,0);   // <3> Set target;
-                    //     the return value will be forwarded to task #2, condition #0.
+    (||{3})          // <1> Define the body
+        .into_task() // <2> Create a task from the given closure.
+        .to(2,0);    // <3> Set target;
+                     //     the return value will be forwarded to task #2, condition #0.
 
 let task = 
-    (||{3})         // <1> ..
-        .task();    // <2> ..
-                    // <3> `to()` skipped, the return value dropped
+    (||{3})           // <1> ..
+        .into_task(); // <2> ..
+                      // <3> `to()` skipped, the return value dropped
 ```
 
 **Case 3**:  [ **With** parameter, **No** return ]  
@@ -89,13 +89,13 @@ let task =
 # use taskorch::TaskBuildNew as _;
 
 let task = 
-    (|_:i8|{})      // <1> Define the body, taskid is auto-generated.
-        .task();    // <2> Create a task from the given closure.
-                    // <3> `to()` skipped, as there is no return value
+    (|_:i8|{})        // <1> Define the body, taskid is auto-generated.
+        .into_task(); // <2> Create a task from the given closure.
+                      // <3> `to()` skipped, as there is no return value
 let task = 
-    (|_:i8|{}, 1)   // <1> Define the body, with an explicit taskid.
-        .task();    // <2> ..
-                    // <3> ..
+    (|_:i8|{}, 1)     // <1> Define the body, with an explicit taskid.
+        .into_task(); // <2> ..
+                      // <3> ..
 ```
 
 **Case 4**:  [ **With** parameter, **With** return ]  
@@ -103,27 +103,27 @@ let task =
 # use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
 
 let task = 
-    (|_:i8|{3})     // <1> Define the body, taskid is auto-generated.
-        .task();    // <2> Create a task from the given closure.
-                    // <3> `to()` skipped, the return value dropped
+    (|_:i8|{3})       // <1> Define the body, taskid is auto-generated.
+        .into_task(); // <2> Create a task from the given closure.
+                      // <3> `to()` skipped, the return value dropped
 let task = 
-    (|_:i8|{3}, 1)  // <1> Define the body, with an explicit taskid.
-        .task();    // <2> ..
-                    // <3> ..
+    (|_:i8|{3}, 1)    // <1> Define the body, with an explicit taskid.
+        .into_task(); // <2> ..
+                      // <3> ..
 
 let task = 
-    (|_:i8|{3})     // <1> Define the body, taskid is auto-generated.
-        .task()     // <2> Create a task from the given closure.
-        .to(2,0);   // <3> Set target;
-                    //     the return value will be forwarded to task #2 and cond #0
+    (|_:i8|{3})      // <1> Define the body, taskid is auto-generated.
+        .into_task() // <2> Create a task from the given closure.
+        .to(2,0);    // <3> Set target;
+                     //     the return value will be forwarded to task #2 and cond #0
 
 let task = 
-    (|_:i8|{3}, 1) // <1> Define the body, with an explicit taskid.
-        .task()    // <2> ..
-        .to(2,0);  // <3> ..
+    (|_:i8|{3}, 1)   // <1> Define the body, with an explicit taskid.
+        .into_task() // <2> ..
+        .to(2,0);    // <3> ..
 ```
 **Exit task creation**  
-The only difference here is the use of `.exit_task()` instead of `.task()`.
+The only difference here is the use of `.exit_task()` instead of `.into_task()`.
 
 ## ⚠️ API NOTE
 As this project is currently in early active development, the API is **highly unstable** and **will change** in subsequent versions.
@@ -145,13 +145,13 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).task());
+    submitter.submit((||println!("free-task:  Hello, 1 2 3 ..")).into_task());
 
     // an exit task with ONE str cond
     let id_exit = submitter.submit(
         (|msg:&str|
             println!("exit-task:  received ({msg:?}) and EXIT")
-        ).exit_task()
+        ).into_exit_task()
     );
 
     // another task pass message to exit task
@@ -160,7 +160,7 @@ fn main() {
             const MSG: &'static str = "exit";
             println!("task 'AA':  I pass [\"{MSG}\"] to exit-task to exit");
             MSG
-        }).task().to(id_exit, 0)
+        }).into_task().to(id_exit, 0)
     );
 
     // Step#4. start a thread and run
