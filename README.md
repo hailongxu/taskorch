@@ -1,4 +1,5 @@
-# Task Orch
+taskorch
+===
 
 ## System Composition
 The entire concurrency library can generally be divided into four main components:
@@ -170,4 +171,25 @@ fn main() {
     pool.join();
 }
 ```
-For a more complex demo, see the `usage` example.
+For a more complex demo, see the `usage` and `spsc` example.
+
+
+# Available Features
+All logs are compile-time controlled and have zero runtime overhead when disabled.  
+
+- **`log-error`**: Logs ERROR level only  
+- **`log-warn`**: Logs WARN level and above  
+- **`log-info`**: Logs INFO level and above  
+- **`log-debug`**: Logs DEBUG level and above  
+- **`log-trace`**: Logs TRACE level and above (most verbose)  
+
+> ⚠️ Note:   
+These features are mutually exclusive - only one or none can be enabled at a time.  
+**No logs are emitted by default.** 
+
+## 🕒 Timestamp Format in Logs
+The timestamp used in logs is measured from the earliest of the following events:
+- The time when the **first log message was emitted**
+- The time when the **first `Pool`** was created`
+
+This is a **relative time** (not absolute wall-clock time), designed for analyzing task sequences.

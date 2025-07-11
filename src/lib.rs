@@ -3,9 +3,13 @@
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    fmt::Debug,
     sync::{atomic::{AtomicBool, Ordering}, Arc},
     thread::{self, JoinHandle}
 };
+
+#[macro_use]
+mod log;
 
 mod curry;
 mod queue;
@@ -53,6 +57,8 @@ pub struct Pool {
 
 impl Pool {
     pub fn new()-> Self {
+        log::init_starttime();
+        warn!("Pool created.");
         Self {
             queues: HashMap::new(),
             jhands: HashMap::new(),
@@ -70,7 +76,7 @@ impl Pool {
     pub fn task_submitter(&self, qid:usize)->Option<TaskSubmitter> {
         let queue = self.queues.get(&qid)?.clone();
         let c1map = self.c1map.clone();
-        TaskSubmitter {queue, c1map}.into()
+        TaskSubmitter {qid, queue, c1map}.into()
     }
 
     /// gets the ref to Queue by ID
@@ -88,12 +94,16 @@ impl Pool {
         let id = self.next_id();
         // update the queue
         let _r = self.queues.insert(id, queue.clone());
+        debug!("Queue(#{id}) created.");
         Some(id)
     }
 
     /// return thread.id in pool
     pub fn spawn_thread_for(&mut self, qid:usize)->Option<usize> {
-        let queue = self.queue(qid)?;
+        let Some(queue) = self.queue(qid) else {
+            error!("Queue(#{qid}) does not exist; thread starting is not allowed.");
+            return None;
+        };
         spawn_thread(queue).collect_into(self)
     }
 
@@ -118,18 +128,26 @@ impl Pool {
 
     /// block until all threads have exited
     pub fn join(self) {
-        for handle in self.jhands {
-            if let Err(err) = handle.1.0.join() {
+        let thcount = self.jhands.len();
+        let mut threadid_list_log = String::with_capacity(thcount*"thread(123) ".len());
+        for (_innerid,handle) in self.jhands {
+            let thid = handle.0.thread().id();
+            if let Err(err) = handle.0.join() {
                 let err = if let Some(s) = err.downcast_ref::<&str>() {
-                    format!(" thread panic: {}", s)
+                    format!("thread panic: {}", s)
                 } else if let Some(s) = err.downcast_ref::<String>() {
                     format!("thead panic: {}", s)
                 } else {
                     format!("thread panic (unknow)")
                 };
+                error!("{err}");
                 panic!("{}", err);
             }
+            let thidstr = format!("{:?} ",thid);
+            threadid_list_log.push_str(&thidstr);
+            warn!("pool received ({thid:?}) exited ok.");
         }
+        warn!("pool with {thcount} threads: [{threadid_list_log}] exited ok.");
     }
 }
 
@@ -137,6 +155,7 @@ impl Pool {
 /// Handles task submission to a specific queue
 #[derive(Clone)]
 pub struct TaskSubmitter {
+    qid: usize,
     queue: Queue,
     c1map: C1map,
 }
@@ -154,7 +173,7 @@ impl TaskSubmitter {
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
-        C::R: 'static,
+        C::R: 'static + Debug,
     {
         let c1map = self.c1map.clone();
         let c1queue = self.queue.clone();
@@ -166,7 +185,7 @@ impl TaskSubmitter {
             let Ok(r) = r.downcast::<C::R>() else {
                 let _expected_type = TypeId::of::<C::R>();
                 let expected_type_name = std::any::type_name::<C::R>();
-                eprintln!(
+                error!(
                     "to {to:?}.\ndowncast failed: expected {}, got {:?}",
                     expected_type_name, actual_type
                 );
@@ -181,9 +200,11 @@ impl TaskSubmitter {
         if 0 == task.currier.count() {
             let task = Box::new(task);
             self.queue.add_boxtask(task,postdo);
+            debug!("task #{} added into Qid(#{})", usize::MAX, self.qid);
             usize::MAX
         } else {
             let id = self.c1map.insert(task, postdo,taskid).unwrap();
+            debug!("task with cond #{id} added into waitQueue)");
             id
         }
     }
