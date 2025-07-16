@@ -113,6 +113,7 @@ impl Pool {
             .map(|_|id)
     }
 
+    #[allow(dead_code)]
     fn exit_next(&mut self, tid:usize)->Option<()> {
         let jhandle = self.jhands.get_mut(&tid)?;
         jhandle.exit_next();
@@ -155,7 +156,8 @@ impl Pool {
 /// Handles task submission to a specific queue
 #[derive(Clone)]
 pub struct TaskSubmitter {
-    qid: usize,
+    #[allow(dead_code)]
+    qid: usize, // just use in log
     queue: Queue,
     c1map: C1map,
 }
@@ -169,6 +171,7 @@ impl TaskSubmitter {
     ///
     /// # returns
     /// * `usize` - The ID of the task
+    #[allow(private_bounds)]
     pub fn submit<C>(&self,(task,taskid):(TaskCurrier<C>,Option<usize>))->usize
         where
         TaskCurrier<C>: Task,
@@ -181,16 +184,16 @@ impl TaskSubmitter {
             let Some(to) = task.to else {
                 return;
             };
-            let actual_type = r.type_id();
+            let _actual_type = r.type_id();
             let Ok(r) = r.downcast::<C::R>() else {
                 let _expected_type = TypeId::of::<C::R>();
-                let expected_type_name = std::any::type_name::<C::R>();
+                let _expected_type_name = std::any::type_name::<C::R>();
                 error!(
                     "to {to:?}.\ndowncast failed: expected {}, got {:?}",
-                    expected_type_name, actual_type
+                    _expected_type_name, _actual_type
                 );
                 panic!("failed to conver to R type");
-                return;
+                // return;
             };
             let r: C::R = *r;
             when_ci_comed(&to, r, c1map.clone(), c1queue);

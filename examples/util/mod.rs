@@ -50,6 +50,7 @@ pub(crate) fn ffadd(
     r
 }
 
+#[allow(dead_code)]
 pub(crate) fn ffaddx(
     qname:&'static str, pad:&'static str, tname:&'static str, 
     (a, afrom): (i32,&'static str), // p1
@@ -65,6 +66,7 @@ pub(crate) fn ffaddx(
 }
 
 // fun with no param and return i32
+#[allow(dead_code)]
 pub(crate) fn ffpr(
     qname:&'static str, pad:&'static str, tname:&'static str, 
     a: i32,
@@ -90,6 +92,7 @@ pub(crate) fn ffr(
 }
 
 // fun with 1 param and return i32
+#[allow(dead_code)]
 pub(crate) fn ffp(
     qname:&'static str, pad:&'static str,tname:&'static str, 
     a: i32
@@ -112,6 +115,7 @@ pub(crate) fn ff(
     println!("{ti}  {pad}task '{tname}' say : '{content}'");
 }
 
+#[allow(dead_code)]
 pub(crate) fn exit_ffpr(
     qname:&'static str, pad:&'static str,tname:&'static str, 
     a: i32, // p1

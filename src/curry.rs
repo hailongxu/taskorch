@@ -35,6 +35,7 @@ impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7);
 impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7,T8);
 
 // #[derive(Debug)]
+#[allow(private_bounds)]
 pub struct Currier<F,C,R>
 where C:TupleOpt {
     f: F,
@@ -129,7 +130,7 @@ fn test3<'a>() {
         f
     }
 
-    let a = ff(||{});
+    let _a = ff(||{});
     ff(||{3});
     ff(|a:i32|a);
     ff(|a: &'a str| -> &'a str { a });
@@ -144,10 +145,12 @@ pub(crate) trait CallOnce {
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
 }
 
+#[allow(unused)]
 pub(crate) trait CallMut: CallOnce {
     fn call_mut(&mut self)->Self::R;
 }
 
+#[allow(unused)]
 pub(crate) trait Call: CallMut {
     fn call(&self)->Self::R;
 }
@@ -271,6 +274,8 @@ mod test_0 {
         let c = Currier::from(||{let _=n;});
         c.call_once();
     }
+    #[test]
+    #[allow(dead_code)]
     fn test2() {
         trait Invoke : Fn() + FnMut() + FnOnce() {}
         impl<T> Invoke for T
@@ -289,6 +294,7 @@ mod test_0 {
         c.call_once();
     }
     #[test]
+    #[allow(dead_code)]
     fn test3() {
         trait InvOnce {
             fn inv_once(self);
@@ -497,13 +503,14 @@ mod test_1 {
         c.call_mut();
 
         let v = String::new();
-        let mut c = Currier::from(|a:i32|{let v=v; a>3});
+        let mut c = Currier::from(|a:i32|{let _v=v; a>3});
         c.as_param_mut().unwrap().set(0, &3);
         c.call_once();
     }
 
     // the param is missing
     #[should_panic]
+    #[test]
     fn test_panic() {
         let mut c = Currier::from(|a:i32|a>3);
         // c.as_param_mut().unwrap().set(0, &3); you must set the param first
@@ -699,7 +706,7 @@ mod test_2 {
         c.call_mut();
 
         let v = String::new();
-        let mut c = Currier::from(|a:i32,b:i32|{let v=v; a<b});
+        let mut c = Currier::from(|a:i32,b:i32|{let _v=v; a<b});
         c.as_param_mut().unwrap().set(0, &3);
         c.as_param_mut().unwrap().set(1, &4);
         c.call_once();

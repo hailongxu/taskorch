@@ -20,7 +20,7 @@ impl Queue {
         Queue(Arc::new((Mutex::new(VecDeque::new()),Condvar::new())))
     }
 
-    pub fn add_boxtask(&self,task:Box<dyn Task+Send>, postdo: Box<PostDo>) {
+    pub(crate) fn add_boxtask(&self,task:Box<dyn Task+Send>, postdo: Box<PostDo>) {
         let mut lock = self.0.0.lock().unwrap();
         let is_empty = lock.is_empty();
         lock.push_back((task,postdo));
@@ -29,7 +29,8 @@ impl Queue {
         }
     }
 
-    pub fn pop(&self)->Option<(Box<dyn Task+Send>,Box<PostDo>)> {
+    #[allow(dead_code)]
+    pub(crate) fn pop(&self)->Option<(Box<dyn Task+Send>,Box<PostDo>)> {
         self
             .0
             .0
@@ -38,7 +39,8 @@ impl Queue {
             .pop_front()
     }
     
-    pub fn clear(&self) {
+    #[allow(dead_code)]
+    fn clear(&self) {
         self
             .0
             .0
@@ -70,7 +72,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
             }
             
             let mut m = queue.0.lock().unwrap();
-            if let Some((mut task,postdo)) = m.pop_front() {
+            if let Some((task,postdo)) = m.pop_front() {
                 drop(m);
                 let kind = task.kind();
                 let r = task.run();
@@ -116,7 +118,7 @@ impl C1map {
 
     fn update_ci<T:'static+Debug>(&self,anchor:&Anchor,v:&T)->Option<bool> {
         let mut lock = self.0.0.lock().unwrap();
-        let Some((task,postdo)) = lock.get_mut(&anchor.id()) else {
+        let Some((task,_postdo)) = lock.get_mut(&anchor.id()) else {
             error!("task #{} was not found, the cond #{} could not be updated", anchor.id(), anchor.i());
             return None;
         };
@@ -125,9 +127,9 @@ impl C1map {
             return None;
         };
         if !param.set(anchor.i(), v) {
-            let data_type_name  = type_name::<T>();
+            let _data_type_name  = type_name::<T>();
             error!("task #{}.cond#{} has type not indential to {}, can not be updated by {{{v:?}}}.",
-                anchor.id(), anchor.i(), data_type_name);
+                anchor.id(), anchor.i(), _data_type_name);
             return None;
         }
         Some(param.is_full())
@@ -147,4 +149,5 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:T, c1map:C1map, q:Que
     true
 }
 
+#[allow(dead_code)]
 pub(crate) fn when_nil_comed() {}

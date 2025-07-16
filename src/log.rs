@@ -2,6 +2,7 @@ use std::str::{from_utf8, from_utf8_unchecked};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
+#[allow(dead_code)]
 pub(crate) enum Level {
     Error,
     Warn,
@@ -12,6 +13,7 @@ pub(crate) enum Level {
 
 /// Log level options (mutually exclusive - select one or none)
 /// When multiple are selected, compilation will fail.
+#[allow(dead_code)]
 pub(crate) const LEVEL: Option<Level> = {
     #[cfg(feature = "log-error")]
     const MAX_LEVEL: Option<Level> = Some(Level::Error);
@@ -29,14 +31,16 @@ pub(crate) const LEVEL: Option<Level> = {
         feature = "log-info",
         feature = "log-debug",
         feature = "log-trace",
-    )))]  // None level is selected
+    )))]
     const MAX_LEVEL: Option<Level> = None;
     MAX_LEVEL
 };
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
+#[allow(dead_code)]
 pub(crate) static LOG_GLOBAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+#[allow(unused_macros)]
 macro_rules! log {
     ($level:literal $($args:tt)*) => {{
         let msg = log_str!($level $($args)*);
@@ -46,6 +50,7 @@ macro_rules! log {
     }}
 }
 
+#[allow(unused_macros)]
 macro_rules! log_str {
     ($level:literal $($args:tt)*) => {{
         let level = $level;
@@ -82,7 +87,7 @@ macro_rules! log_str {
 fn test_format_by_mutstr() {
     // it does not work
     let mut tid_buf = [0u8; 16];
-    if let Ok(s) = std::str::from_utf8_mut(&mut tid_buf) {
+    if let Ok(_s) = std::str::from_utf8_mut(&mut tid_buf) {
         #[cfg(false)]
         // s is err
         if write!(s, "{}", "").is_err() {
@@ -91,6 +96,7 @@ fn test_format_by_mutstr() {
     }
 }
 
+#[allow(unused)]
 #[cfg(any(
     feature = "log-error",
     feature = "log-warn",
@@ -101,6 +107,7 @@ macro_rules! log_print {
     };
 }
 
+#[allow(unused)]
 #[cfg(not(any(
     feature = "log-error",
     feature = "log-warn",
@@ -112,63 +119,67 @@ macro_rules! log_print {
 }
 
 
-
-#[cfg(not(any(
-    feature="log-file",
-    feature="log-line"
-)))]
+#[allow(unused)]
+#[cfg(true)]
+// #[cfg(not(any(
+//     feature="log-file",
+//     feature="log-line"
+// )))]
 macro_rules! myfilepre {
     () => {
         ""
     };
 }
 
-#[cfg(any(
-    feature="log-file",
-    feature="log-line"
-))]
+#[allow(unused)]
+#[cfg(false)]
+// #[cfg(any(
+//     feature="log-file",
+//     feature="log-line"
+// ))]
 macro_rules! myfilepre {
     () => {
         " "
     };
 }
 
-
-#[cfg(not(feature="log-file"))]
+#[allow(unused)]
+#[cfg(true)]
+// #[cfg(not(feature="log-file"))]
 macro_rules! myfile {
     () => {
         ""
     };
 }
-#[cfg(feature="log-file")]
+#[cfg(false)]
+#[allow(unused)]
+// #[cfg(feature="log-file")]
 macro_rules! myfile {
     () => {
         file!()
     };
 }
 
-#[cfg(not(feature="log-line"))]
+
+#[allow(unused_macros)]
+#[cfg(true)]
+// #[cfg(not(feature="log-line"))]
 macro_rules! myline {
     () => {
         ("","")
     };
 }
-#[cfg(feature="log-line")]
+#[cfg(false)]
+// #[cfg(feature="log-line")]
 macro_rules! myline {
     () => {
         (":",line!())
     };
 }
 
-// for testing macro visibility just in this crate
-macro_rules! this_test {
-    ($str:expr) => {
-        {}
-    };
-}
-
 // error level
 
+#[allow(unused_macros)]
 #[cfg(not(any(
     feature = "log-error",
     feature = "log-warn",
@@ -182,6 +193,7 @@ macro_rules! error {
     };
 }
 
+#[allow(unused_macros)]
 #[cfg(any(
     feature = "log-error",
     feature = "log-warn",
@@ -195,6 +207,7 @@ macro_rules! error {
     };
 }
 
+#[allow(unused_macros)]
 #[cfg(not(any(
     feature = "log-error",
     feature = "log-warn",
@@ -208,6 +221,7 @@ macro_rules! error_str {
     };
 }
 
+#[allow(unused_macros)]
 #[cfg(any(
     feature = "log-error",
     feature = "log-warn",
@@ -224,6 +238,7 @@ macro_rules! error_str {
 
 // wran level
 
+#[allow(unused_macros)]
 #[cfg(not(any(
     feature = "log-warn",
     feature = "log-info",
@@ -236,6 +251,7 @@ macro_rules! warn {
     };
 }
 
+#[allow(unused_macros)]
 #[cfg(any(
     feature = "log-warn",
     feature = "log-info",
@@ -250,7 +266,7 @@ macro_rules! warn {
 
 
 // info level
-
+#[allow(unused_macros)]
 #[cfg(not(any(
     feature = "log-info",
     feature = "log-debug",
@@ -262,6 +278,7 @@ macro_rules! info {
     };
 }
 
+#[allow(unused_macros)]
 #[cfg(any(
     feature = "log-info",
     feature = "log-debug",
@@ -276,6 +293,7 @@ macro_rules! info {
 
 // debug level
 
+#[allow(unused_macros)]
 #[cfg(not(any(
     feature = "log-debug",
     feature = "log-trace",
@@ -290,6 +308,7 @@ macro_rules! debug {
     feature = "log-debug",
     feature = "log-trace",
 ))]
+#[allow(unused_macros)]
 macro_rules! debug {
     ($($args:tt)*) => {
         log!("debug" $($args)*)
@@ -302,6 +321,7 @@ macro_rules! debug {
 #[cfg(not(any(
     feature = "log-trace",
 )))]
+#[allow(unused_macros)]
 macro_rules! trace {
     ($($args:tt)*) => {
         {}
@@ -311,6 +331,7 @@ macro_rules! trace {
 #[cfg(any(
     feature = "log-trace",
 ))]
+#[allow(unused_macros)]
 macro_rules! trace {
     ($($args:tt)*) => {
         log!("trace" $($args)*)
@@ -321,6 +342,7 @@ pub(crate) fn init_starttime() {
     START_TIME.get_or_init(::std::time::Instant::now);
 }
 /// return (days, hours, minutes, seconds, millisecs) 
+#[allow(dead_code)]
 pub(crate) fn uptime()->(u32,u8,u8,u8,u16) {
     let start = START_TIME.get_or_init(::std::time::Instant::now);
     let e = start.elapsed();
@@ -335,6 +357,7 @@ pub(crate) fn uptime()->(u32,u8,u8,u8,u16) {
     (d as u32,h as u8,m as u8,s as u8,ss as u16)
 }
 
+#[allow(unused_macros)]
 macro_rules! sleep_millis {
     () => {
         ::std::thread::sleep(std::time::Duration::from_millis(1));
@@ -357,7 +380,7 @@ fn test_info() {
 
 #[test]
 fn test_log_str() {
-    let a = log_str!("error" "");
+    let _a = log_str!("error" "");
 }
 
 fn format_threadid(buf:&mut[u8;32])->usize {
@@ -376,12 +399,13 @@ fn format_threadid(buf:&mut[u8;32])->usize {
     bytes_written as usize
 }
 
+#[warn(unused_assignments)]
 fn concise_threadid(buf:&[u8;32], len:usize)->(&str,&str) {
     debug_assert!(len <= buf.len());
     const HEAD: [u8; 9] = [b'T',b'h',b'r',b'e',b'a',b'd',b'I',b'd',b'('];
     let head_verified = buf.starts_with(&HEAD);
     let tail_verified = buf[len-1] == b')';
-    let (mut head, mut tail) = ("","");
+    let (head, tail): (&str,&str);
     if head_verified && tail_verified {
         head = from_utf8(&buf[..2]).unwrap_or("");
         unsafe {
@@ -389,16 +413,21 @@ fn concise_threadid(buf:&[u8;32], len:usize)->(&str,&str) {
         }
     } else {
         head = from_utf8(&buf[0..len]).unwrap_or("unknown-thereadId-format");
+        tail = "";
     }
     (head, tail)
 }
 
+#[allow(unused)]
 type ThreadIdBuf = [u8;32];
+#[allow(dead_code)]
 pub(crate) fn format_concise_current_threadid(buff:&mut ThreadIdBuf)->(&str,&str) {
     let len = format_threadid(buff);
     concise_threadid(buff, len)
 }
 
+
+#[allow(dead_code)]
 #[test]
 fn test_format_threadid_by_cursor() {
     let mut buf = [0u8; 32];
@@ -407,6 +436,8 @@ fn test_format_threadid_by_cursor() {
     assert!(!head.is_empty() && !tail.is_empty());
     let s = std::str::from_utf8(&buf[..len]).unwrap();
     println!("{len} {s} {head} {tail}");
+
+    format_concise_current_threadid(&mut buf);
 }
 
 #[test]

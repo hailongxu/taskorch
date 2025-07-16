@@ -33,7 +33,7 @@ fn main() {
 fn consume_task_prompt(submitter:&TaskSubmitter) {
     const Q:&'static str = "consumer";
     const PAD:&'static str = "  ";
-    submitter.submit((||ff("comsumer", PAD, "init", "waiting task to do")).into_task());
+    submitter.submit((||ff(Q, PAD, "init", "waiting task to do")).into_task());
 }
 
 
