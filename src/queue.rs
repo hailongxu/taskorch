@@ -1,7 +1,11 @@
 use std::{
-    any::{type_name, Any}, collections::{HashMap, VecDeque}, fmt::Debug, sync::{
+    any::{type_name, Any},
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    sync::{
         atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex
-    }, thread
+    },
+    thread
 };
 
 use crate::{task::{Task, Kind, Anchor}, Jhandle};
@@ -127,9 +131,12 @@ impl C1map {
             return None;
         };
         if !param.set(anchor.i(), v) {
+            let _taskid = anchor.id();
+            let _i = anchor.i();
+            let _this_type_name = param.typename(_i);
             let _data_type_name  = type_name::<T>();
-            error!("task(#{}).cond#{} has type not identical to {}, cannot be updated with {{{v:?}}}.",
-                anchor.id(), anchor.i(), _data_type_name);
+            error!("task(#{_taskid}).cond#{_i} has type <{_this_type_name}> not identical to <{_data_type_name}>, \
+                    cannot be updated with {{{v:?}}}.");
             return None;
         }
         Some(param.is_full())

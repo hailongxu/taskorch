@@ -157,6 +157,7 @@ pub(crate) trait Call: CallMut {
 
 pub(crate) trait CallParam {
     fn set(&mut self, i:usize, value: &dyn Any)->bool;
+    fn typename(&self, i:usize)->&'static str;
     fn is_full(&self)->bool;
 }
 
@@ -468,6 +469,12 @@ impl<F,P1:Clone+'static,R> CallParam for Currier<F,(P1,),R>
         self.c.0 = Some(p1.clone());
         true
     }
+    fn typename(&self, i:usize)->&'static str {
+        if i != 0 {
+            return "";
+        }
+        std::any::type_name::<P1>()
+    }    
     fn is_full(&self)->bool {
         self.c.0.is_some()
     }
@@ -655,6 +662,16 @@ macro_rules! impl_currier_call {
                     }
                     )+
                     _ => false
+                }
+            }
+            fn typename(&self, i:usize)->&'static str {
+                match i {
+                    $(
+                    $i => {
+                        ::std::any::type_name::<$P>()
+                    }
+                    )+
+                    _ => ""
                 }
             }
             fn is_full(&self)->bool {

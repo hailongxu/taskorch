@@ -38,33 +38,17 @@ Tasks can be executed in **two distinct modes**:
    *This step can be skipped if the task does not produce any output.*
 
 ### Usage
-Add the following to your `Cargo.toml`:
+Add only one of the following lines to your `Cargo.toml`:
 ```toml
-[dependencies]
-taskoach = {version="0.2.1", features=["log-info", "log-color"]}
+# No logs, no color
+taskorch = "0.2.1"
+
+# With logging, and colored output
+taskorch = {version="0.2.1", features=["log-info", "log-color"]}
 ```
 Optional features can be enabled based on your needs (see [Available Features](#available-features)).
 
 ### Task Creation Code
-
-#### ⚠️ Type cast NOTE
-> **❗ Error-prone operation!**  
-> When forwarding a task result to a conditional task's condition point:  
-> - **Ensure** the result type **must be identical to** the condition type.  
-> - **Violation will trigger `panic`!**  
-```rust
-# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
-// Sample code explanation
-let cc = |a:i32,b:i8|{}; // the type of cond #0 is `i32`
-                         // the type of cond #1 is `i8` 
-let f0 = ||5i32; // the return type is `i32`
-let f1 = ||5i8;  // the return type is `i8`
-
-let task_cc = (cc,1).into_task(); // taskid is explicitly set to 1
-let task_f0 = f0.into_task().to(1,0); // *** return type `i32` === cond #0 type `i32` ***
-let task_f1 = f1.into_task().to(1,1); // *** return type `i8` === cond #1 type `i8`   ***
-```
-
 #### Note
 NO `parameter`, NO `taskid` needed.  
 NO `return`, NO `target anchor` required.  
@@ -132,7 +116,26 @@ let task =
         .to(2,0);    // <3> ..
 ```
 **Exit task creation**  
-The only difference here is the use of `.exit_task()` instead of `.into_task()`.
+The only difference here is the use of `.into_exit_task()` instead of `.into_task()`.
+
+
+#### ⚠️ Type cast NOTE
+> **❗ Error-prone operation!**  
+> When forwarding a task result to a conditional task's condition point:  
+> - **Ensure** the result type **must be identical to** the condition type.  
+> - **Violation will trigger `panic`!**  
+```rust
+# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
+// Sample code explanation
+let cc = |a:i32,b:i8|{}; // the type of cond #0 is `i32`
+                         // the type of cond #1 is `i8` 
+let f0 = ||5i32; // the return type is `i32`
+let f1 = ||5i8;  // the return type is `i8`
+
+let task_cc = (cc,1).into_task(); // taskid is explicitly set to 1
+let task_f0 = f0.into_task().to(1,0); // *** return type `i32` === cond #0 type `i32` ***
+let task_f1 = f1.into_task().to(1,1); // *** return type `i8` === cond #1 type `i8`   ***
+```
 
 ## ⚠️ API NOTE
 As this project is currently in early active development, the API is **highly unstable** and **will change** in subsequent versions.
