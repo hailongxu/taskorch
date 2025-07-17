@@ -1,3 +1,6 @@
+# 0.2.1 (2025-07-17)
+Add ANSI color support for log messages
+
 # 0.2.0 (2025-07-16)
 ### 🆕 New Features
 - Added logging support with detailed debug information to assist troubleshooting

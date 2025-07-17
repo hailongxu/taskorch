@@ -179,7 +179,7 @@ impl TaskSubmitter {
         C::R: 'static + Debug,
     {
         let c1map = self.c1map.clone();
-        let c1queue = self.queue.clone();
+        let c1queue = (self.qid,self.queue.clone());
         let postdo = move |r: Box<dyn Any>| {
             let Some(to) = task.to else {
                 return;
@@ -203,11 +203,11 @@ impl TaskSubmitter {
         if 0 == task.currier.count() {
             let task = Box::new(task);
             self.queue.add_boxtask(task,postdo);
-            debug!("task #{} added into Qid(#{})", usize::MAX, self.qid);
+            debug!("task(#{}) added into Qid(#{})", usize::MAX, self.qid);
             usize::MAX
         } else {
             let id = self.c1map.insert(task, postdo,taskid).unwrap();
-            debug!("task with cond #{id} added into waitQueue)");
+            debug!("task(#{id}) with cond added into waitQueue");
             id
         }
     }

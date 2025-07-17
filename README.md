@@ -37,6 +37,14 @@ Tasks can be executed in **two distinct modes**:
 3. **Notify (Optional)**:  Chain tasks by calling `to()` to set a `target anchor`.  
    *This step can be skipped if the task does not produce any output.*
 
+### Usage
+Add the following to your `Cargo.toml`:
+```toml
+[dependencies]
+taskoach = {version="0.2.1", features=["log-info", "log-color"]}
+```
+Optional features can be enabled based on your needs (see [Available Features](#available-features)).
+
 ### Task Creation Code
 
 #### ⚠️ Type cast NOTE
@@ -172,6 +180,10 @@ fn main() {
 }
 ```
 For a more complex demo, see the `usage` and `spsc` example.
+```shell
+cargo run --example usage --features="log-trace,log-color"
+cargo run --example spsc --features="log-trace,log-color"
+```
 
 
 ## Available Features
@@ -182,14 +194,16 @@ All logs are compile-time controlled and have zero runtime overhead when disable
 - **`log-info`**: Logs INFO level and above  
 - **`log-debug`**: Logs DEBUG level and above  
 - **`log-trace`**: Logs TRACE level and above (most verbose)  
+- **`log-color`**: Adds ANSI color to log messages in the terminal  
 
 > ⚠️ Note:   
 These features are mutually exclusive - only one or none can be enabled at a time.  
-**No logs are emitted by default.** 
+**No logs are emitted by default.**  
+**Color is disabled by default.**  
 
 ### 🕒 Timestamp Format in Logs
 The timestamp used in logs is measured from the earliest of the following events:
 - The time when the **first log message was emitted**
-- The time when the **first `Pool`** was created`
+- The time when the **first `Pool`** was created
 
 This is a **relative time** (not absolute wall-clock time), designed for analyzing task sequences.

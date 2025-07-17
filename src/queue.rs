@@ -119,16 +119,16 @@ impl C1map {
     fn update_ci<T:'static+Debug>(&self,anchor:&Anchor,v:&T)->Option<bool> {
         let mut lock = self.0.0.lock().unwrap();
         let Some((task,_postdo)) = lock.get_mut(&anchor.id()) else {
-            error!("task #{} was not found, the cond #{} could not be updated", anchor.id(), anchor.i());
+            error!("task(#{}) was not found, the cond(#{}) could not be updated", anchor.id(), anchor.i());
             return None;
         };
         let Some(param) = task.as_param_mut() else {
-            error!("task #{} failed to acquire cond #{}, update skipped.", anchor.id(), anchor.i());
+            error!("task(#{}) failed to acquire cond(#{}), update skipped.", anchor.id(), anchor.i());
             return None;
         };
         if !param.set(anchor.i(), v) {
             let _data_type_name  = type_name::<T>();
-            error!("task #{}.cond#{} has type not indential to {}, can not be updated by {{{v:?}}}.",
+            error!("task(#{}).cond#{} has type not identical to {}, cannot be updated with {{{v:?}}}.",
                 anchor.id(), anchor.i(), _data_type_name);
             return None;
         }
@@ -136,15 +136,19 @@ impl C1map {
     }
 }
 
-pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:T, c1map:C1map, q:Queue)->bool {
+// qid just used for log
+#[allow(unused_variables)]
+pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:T, c1map:C1map, (qid,q):(usize,Queue))->bool {
     let Some(true) = c1map.update_ci(to, &v) else {
-        // the log has process in update_ci
+        // the log has been processed in update_ci
         return false;
     };
+    trace!("cond-task(#{}) receives cond(#{}) {{{v:?}}}", to.id(),to.i());
     let Some((task,postdo)) = c1map.remove(to.id()) else {
-        error!("cond task #{} does not find.",to.id());
+        error!("cond task(#{}) does not find.",to.id());
         return  false;
     };
+    debug!("cond-task(#{}) has all been satified and schedued to Q(#{qid})", to.id());
     q.add_boxtask(task,postdo);
     true
 }
