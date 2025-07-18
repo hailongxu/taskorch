@@ -145,8 +145,8 @@ impl C1map {
 
 // qid just used for log
 #[allow(unused_variables)]
-pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:T, c1map:C1map, (qid,q):(usize,Queue))->bool {
-    let Some(true) = c1map.update_ci(to, &v) else {
+pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:&T, c1map:C1map, (qid,q):(usize,Queue))->bool {
+    let Some(true) = c1map.update_ci(to, v) else {
         // the log has been processed in update_ci
         return false;
     };
@@ -162,3 +162,49 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:T, c1map:C1map, (qid,
 
 #[allow(dead_code)]
 pub(crate) fn when_nil_comed() {}
+
+
+
+pub(crate) trait WhenTupleComed {
+    fn foreach(&self, c1map:C1map, q:(usize,Queue));
+}
+impl<T:'static+Debug> WhenTupleComed for ((T,Anchor),) {
+    fn foreach(&self, c1map:C1map, q:(usize,Queue)) {
+        when_ci_comed(&self.0.1, &self.0.0, c1map, q);
+    }
+}
+
+macro_rules! when_tuple_comed_impl {
+    ($($i:tt $T:ident),+) => {
+        impl< $($T:'static+Debug),+ > WhenTupleComed for ($(($T, Anchor)),+) {
+            fn foreach(&self, c1map: C1map, q: (usize,Queue)) {
+                $(
+                    when_ci_comed(&self.$i.1, &self.$i.0, c1map.clone(), q.clone());
+                )+
+            }
+        }
+    };
+}
+
+#[cfg(false)]
+macro_rules! when_tuple_comed_impl {
+    ($(($t:ty, $n:tt)),+) => {
+        // $t: ":"  ?????? error: expected one of `>` or `as`, found `:`
+        // if $t 's type is ty. it is ok when $t is ident ???
+        impl< $($t:'static+Debug),+ > WhenTupleComed for ($($t,Anchor),+) {
+            fn foreach(&self, c1map:C1map, q:Queue) {
+                $(
+                    when_ci_comed(&self.$n.1, &self.$n.0, c1map, q);
+                )+
+            }
+        }
+    };
+}
+
+when_tuple_comed_impl!(0 T1, 1 T2);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4, 4 T5);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4, 4 T5, 5 T6);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4, 4 T5, 5 T6, 6 T7);
+when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4, 4 T5, 5 T6, 6 T7, 7 T8);

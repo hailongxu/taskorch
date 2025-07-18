@@ -196,7 +196,7 @@ impl TaskSubmitter {
                 panic!("failed to conver to R type");
                 // return;
             };
-            let r: C::R = *r;
+            let r: &C::R = &*r;
             when_ci_comed(&to, r, c1map.clone(), c1queue);
         };
         let postdo = Box::new(postdo);
