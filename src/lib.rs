@@ -11,6 +11,7 @@ use std::{
 #[macro_use]
 mod log;
 
+mod meta;
 mod curry;
 mod queue;
 mod task;

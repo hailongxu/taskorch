@@ -1,38 +1,7 @@
 // #![feature(unboxed_closures)]
 
 use std::{any::Any, marker::PhantomData};
-
-trait TupleOpt {
-    type Opt;
-    const NONE: Self::Opt;
-}
-
-impl TupleOpt for () {
-    type Opt = ();
-    const NONE:Self::Opt = ();
-}
-
-impl<T1> TupleOpt for (T1,) {
-    type Opt = (Option<T1>,);
-    const NONE:Self::Opt = (None::<T1>,);
-}
-
-macro_rules! impl_tupleopt {
-    ($($T:ident),+) => {
-        impl<$($T),+> TupleOpt for ($($T,)+) {
-            type Opt = ($(Option<$T>,)+);
-            const NONE:Self::Opt = ($(None::<$T>,)+);
-        }
-    };
-}
-
-impl_tupleopt!(T1,T2);
-impl_tupleopt!(T1,T2,T3);
-impl_tupleopt!(T1,T2,T3,T4);
-impl_tupleopt!(T1,T2,T3,T4,T5);
-impl_tupleopt!(T1,T2,T3,T4,T5,T6);
-impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7);
-impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7,T8);
+use crate::meta::TupleOpt;
 
 // #[derive(Debug)]
 #[allow(private_bounds)]
