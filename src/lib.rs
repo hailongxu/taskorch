@@ -173,7 +173,7 @@ impl TaskSubmitter {
     /// # returns
     /// * `usize` - The ID of the task
     #[allow(private_bounds)]
-    pub fn submit<C>(&self,(task,taskid):(TaskCurrier<C>,Option<usize>))->usize
+    pub fn submit<C>(&self,(task,to):(TaskCurrier<C>,Option<Anchor>))->usize
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -182,7 +182,7 @@ impl TaskSubmitter {
         let c1map = self.c1map.clone();
         let c1queue = (self.qid,self.queue.clone());
         let postdo = move |r: Box<dyn Any>| {
-            let Some(to) = task.to else {
+            let Some(to) = to else {
                 return;
             };
             let _actual_type = r.type_id();
@@ -207,7 +207,8 @@ impl TaskSubmitter {
             debug!("task(#{}) added into Qid(#{})", usize::MAX, self.qid);
             usize::MAX
         } else {
-            let id = self.c1map.insert(task, postdo,taskid).unwrap();
+            let taskid = task.id;
+            let id = self.c1map.insert(task, postdo, taskid).unwrap();
             debug!("task(#{id}) with cond added into waitQueue");
             id
         }

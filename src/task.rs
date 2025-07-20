@@ -73,14 +73,20 @@ impl Anchor {
 /// The carrier of the task, used to create and invoke its functionality.
 pub struct TaskCurrier<Currier> {
     pub(crate) currier: Currier,
-    pub(crate) to: Option<Anchor>,
+    pub(crate) id: Option<usize>,
     pub(crate) kind: Kind,
+}
+
+impl<C> TaskCurrier<C> {
+    pub fn id(&self)->Option<usize> {
+        self.id
+    }
 }
 
 impl<T> Task for TaskCurrier<T>
     where
     T: CallOnce,
-    T::R: 'static
+    T::R: 'static,
 {
     fn run(self:Box<Self>)->Option<Box<dyn Any>> {
         let r = self.currier.call_once();
@@ -105,14 +111,14 @@ pub trait TaskBuildNew<TC> {
     /// A tuple containing:
     /// - The `Task Currier` (`TC`)
     /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
-    fn into_task(self)->(TC,Option<usize>);
+    fn into_task(self)->(TC,Option<Anchor>);
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_task()` instead for clearer ownership semantic. \
                `task()` will be removed in next release."
     )]
-    fn task(self)->(TC,Option<usize>) where Self:Sized {
+    fn task(self)->(TC,Option<Anchor>) where Self:Sized {
         self.into_task()
     }
 
@@ -120,14 +126,14 @@ pub trait TaskBuildNew<TC> {
     /// # Note
     /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
     /// after task completion.
-    fn into_exit_task(self)->(TC,Option<usize>);
+    fn into_exit_task(self)->(TC,Option<Anchor>);
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_exit_task()` instead for clearer ownership semantic. \
                `exit_task()` will be removed in next release."
     )]
-    fn exit_task(self)->(TC,Option<usize>) where Self:Sized {
+    fn exit_task(self)->(TC,Option<Anchor>) where Self:Sized {
         self.into_exit_task()
     }
 }
@@ -140,101 +146,101 @@ pub trait TaskBuildOp<Currier> {
     fn to(self, taskid:usize,i:usize)->Self;
 }
 
-impl<Currier> TaskBuildOp<Currier> for (TaskCurrier<Currier>,Option<usize>) {
+impl<Currier> TaskBuildOp<Currier> for (TaskCurrier<Currier>,Option<Anchor>) {
     fn to(self, taskid:usize,i:usize)->Self {
         (
             TaskCurrier {
                 currier: self.0.currier,
-                to: Some(Anchor(taskid,i)),
+                id: self.0.id,
                 kind: self.0.kind,
             },
-            self.1
+            Some(Anchor(taskid,i))
         )
     }
 }
 
 /// constructs a task without cond
 impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self),
-            to: None,
+            id: None,
             kind: Kind::Normal,
         },None)
     }
-    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self),
-            to: None,
+            id: None,
             kind: Kind::Exit,
         },None)
     }
 }
 impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
-            to: None,
+            id: Some(self.1),
             kind: Kind::Normal,
-        },Some(self.1))
+        },None)
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
-            to: None,
+            id: Some(self.1),
             kind: Kind::Exit,
-        },Some(self.1))
+        },None)
     }
 }
 
 impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self),
-            to: None,
+            id: None,
             kind: Kind::Normal,
         },None)
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self),
-            to: None,
+            id: None,
             kind: Kind::Exit,
         },None)
     }
 }
 impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
-            to: None,
+            id: Some(self.1),
             kind: Kind::Normal,
-        },Some(self.1))
+        },None)
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<usize>) {
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
         (TaskCurrier {
             currier: Currier::from(self.0),
-            to: None,
+            id: Some(self.1),
             kind: Kind::Exit,
-        },Some(self.1))
+        },None)
     }
 }
 
 macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
         impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for F {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
-                    to: None,
+                    id: None,
                     kind: Kind::Normal,
                 }, None)
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
                 (TaskCurrier {
                     currier: Currier::from(self),
-                    to: None,
+                    id: None,
                     kind: Kind::Exit,
                 }, None)
             }
@@ -242,20 +248,20 @@ macro_rules! impl_task_build_new {
 
 
         impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for (F, usize) {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
-                    to: None,
+                    id: Some(self.1),
                     kind: Kind::Normal,
-                }, Some(self.1))
+                }, None)
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<usize>) {
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
                 (TaskCurrier {
                     currier: Currier::from(self.0),
-                    to: None,
+                    id: Some(self.1),
                     kind: Kind::Exit,
-                }, Some(self.1))
+                }, None)
             }
         }
     };
