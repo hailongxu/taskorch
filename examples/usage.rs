@@ -1,5 +1,5 @@
 
-use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp, TaskSubmitter};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskSubmitter};
 
 mod util;
 use util::*;

@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering}
 };
 
-use crate::curry::{CallOnce, CallParam, Currier};
+use crate::{curry::{CallOnce, CallParam, Currier}, meta::TupleOpt};
 use crate::meta::Fndecl;
 
 /// Defines the behavior type for tasks.
@@ -73,23 +73,16 @@ impl Anchor {
 }
 
 /// The carrier of the task, used to create and invoke its functionality.
-pub struct TaskCurrier<Currier> {
+pub(crate) struct TaskCurrier<Currier> {
     pub(crate) currier: Currier,
     pub(crate) id: Option<usize>,
     pub(crate) kind: Kind,
 }
 
-pub enum TaskMap<MapFn,R> {
+pub(crate) enum TaskMap<MapFn,R> {
     None,
     To(Anchor),
     ToMany(MapFn,PhantomData<R>),
-}
-
-impl<C> TaskCurrier<C> {
-    /// get task id from task, only if the task has conds.
-    pub fn id(&self)->Option<usize> {
-        self.id
-    }
 }
 
 impl<T> Task for TaskCurrier<T>
@@ -113,69 +106,33 @@ impl<T> Task for TaskCurrier<T>
     }
 }
 
-/// A builder trait for constructing tasks with an optional task ID.
-pub trait TaskBuildNew<TC,TM> {
-    /// construct a task.
-    /// # Returns
-    /// A tuple containing:
-    /// - The `Task Currier` (`TC`)
-    /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
-    fn into_task(self)->(TC,TM);
+pub struct TaskBuild<C,MapFn,MapR>(pub(crate) TaskCurrier<C>,pub(crate) TaskMap<MapFn,MapR>);
 
-    #[deprecated(
-        since="0.2.0",
-        note = "Use `into_task()` instead for clearer ownership semantic. \
-               `task()` will be removed in next release."
-    )]
-    fn task(self)->(TC,TM) where Self:Sized {
-        self.into_task()
-    }
-
-    /// construct a exit task
-    /// # Note
-    /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
-    /// after task completion.
-    fn into_exit_task(self)->(TC,TM);
-
-    #[deprecated(
-        since="0.2.0",
-        note = "Use `into_exit_task()` instead for clearer ownership semantic. \
-               `exit_task()` will be removed in next release."
-    )]
-    fn exit_task(self)->(TC,TM) where Self:Sized {
-        self.into_exit_task()
+impl<C,MapFn,MapR> TaskBuild<C,MapFn,MapR> {
+    /// get task id from task, only if the task has conds.
+    pub fn id(&self)->Option<usize> {
+        self.0.id
     }
 }
-/// TaskBuildOp provides target anchor configuration.
-pub trait TaskBuildOp<Currier,R> {
+
+// This is done to prevent exposing `curry` to external users, thereby avoiding unnecessary complexity in the documentation.
+// for the `to()` use the R of CallOnce:R, but it's just visibility inside crate.
+pub trait RofCurrier {
+    type Ret;
+}
+// here, we predefinetely know the R is excitley the type of F::CallOnce::R
+impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
+    type Ret = R;
+}
+
+impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
+{
     /// Configures the target anchor to `(taskid, condid)`.
     /// # Arguments:
     /// * `taskid` - target task identifier
     /// * `i` - cond #index (0-based)
-    fn to(self, taskid:usize,i:usize)->(TaskCurrier<Currier>,TaskMap<NullMapFn<R>,()>);
-}
-
-pub trait TaskBuildOpMany<Currier,MapFn,R>
-    where Currier: CallOnce,
-{
-    fn to_many(self, mapfn:MapFn)->(TaskCurrier<Currier>, TaskMap<MapFn,R>)
-        where MapFn: Fndecl<(Currier::R,),R>;
-}
-
-// struct PassthroughMapFn;
-// impl<P> Fndecl<(P,),P> for PassthroughMapFn {
-//     type Pt=(P,);
-//     type R=((P,);
-//     fn call(self,_ps:Self::Pt)->Self::R {
-//     }
-// }
-
-impl<Currier> TaskBuildOp<Currier,Currier::R> for (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>)
-    where
-    Currier: CallOnce,
-{
-    fn to(self, taskid:usize, i:usize) -> (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>) {
-        (
+    pub fn to(self, taskid:usize, i:usize) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: self.0.currier,
                 id: self.0.id,
@@ -186,14 +143,12 @@ impl<Currier> TaskBuildOp<Currier,Currier::R> for (TaskCurrier<Currier>, TaskMap
     }
 }
 
-impl<Currier,MapFn1,R1,MapFn,R> TaskBuildOpMany<Currier,MapFn,R> for (TaskCurrier<Currier>, TaskMap<MapFn1,R1>)
-    where
-    Currier: CallOnce,
+impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
 {
-    fn to_many(self, mapfn:MapFn) -> (TaskCurrier<Currier>, TaskMap<MapFn,R>)
+    pub fn to_many<MapFn,R>(self, mapfn:MapFn) -> TaskBuild<Currier, MapFn,R>
         where MapFn: Fndecl<(Currier::R,),R>
     {
-        (
+        TaskBuild (
             TaskCurrier {
                 currier: self.0.currier,
                 id: self.0.id,
@@ -203,6 +158,105 @@ impl<Currier,MapFn1,R1,MapFn,R> TaskBuildOpMany<Currier,MapFn,R> for (TaskCurrie
         )
     }
 }
+
+/// TaskBuildOp provides target anchor configuration.
+#[deprecated(
+    since="0.3.0",
+    note = "Use `to()` directly, for this method has been integrated into the TaskBuild. \
+           trait `TaskBuildOp` actually do nothing and will be removed in next release."
+)]
+pub trait TaskBuildOp<Currier,R> {}
+
+/// A builder trait for constructing tasks with an optional task ID.
+pub trait TaskBuildNew<C,F,R> {
+    /// construct a task.
+    /// # Returns
+    /// A tuple containing:
+    /// - The `Task Currier` (`TC`)
+    /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
+    fn into_task(self)->TaskBuild<C,F,R>;
+
+    #[deprecated(
+        since="0.2.0",
+        note = "Use `into_task()` instead for clearer ownership semantic. \
+               `task()` will be removed in next release."
+    )]
+    fn task(self)->TaskBuild<C,F,R> where Self:Sized {
+        self.into_task()
+    }
+
+    /// construct a exit task
+    /// # Note
+    /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
+    /// after task completion.
+    fn into_exit_task(self)->TaskBuild<C,F,R>;
+
+    #[deprecated(
+        since="0.2.0",
+        note = "Use `into_exit_task()` instead for clearer ownership semantic. \
+               `exit_task()` will be removed in next release."
+    )]
+    fn exit_task(self)->TaskBuild<C,F,R> where Self:Sized {
+        self.into_exit_task()
+    }
+}
+/// TaskBuildOp provides target anchor configuration.
+// pub trait TaskBuildOp<Currier,R> {
+//     /// Configures the target anchor to `(taskid, condid)`.
+//     /// # Arguments:
+//     /// * `taskid` - target task identifier
+//     /// * `i` - cond #index (0-based)
+//     fn to(self, taskid:usize,i:usize)->(TaskCurrier<Currier>,TaskMap<NullMapFn<R>,()>);
+// }
+
+// pub trait TaskBuildOpMany<Currier,MapFn,R>
+//     where Currier: CallOnce,
+// {
+//     fn to_many(self, mapfn:MapFn)->(TaskCurrier<Currier>, TaskMap<MapFn,R>)
+//         where MapFn: Fndecl<(Currier::R,),R>;
+// }
+
+// struct PassthroughMapFn;
+// impl<P> Fndecl<(P,),P> for PassthroughMapFn {
+//     type Pt=(P,);
+//     type R=((P,);
+//     fn call(self,_ps:Self::Pt)->Self::R {
+//     }
+// }
+
+// impl<Currier> TaskBuildOp<Currier,Currier::R> for (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>)
+//     where
+//     Currier: CallOnce,
+// {
+//     fn to(self, taskid:usize, i:usize) -> (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>) {
+//         (
+//             TaskCurrier {
+//                 currier: self.0.currier,
+//                 id: self.0.id,
+//                 kind: self.0.kind,
+//             },
+//             TaskMap::To(Anchor(taskid, i))
+//         )
+//     }
+// }
+
+// impl<Currier,MapFn1,R1,MapFn,R> TaskBuildOpMany<Currier,MapFn,R> for (TaskCurrier<Currier>, TaskMap<MapFn1,R1>)
+//     where
+//     Currier: CallOnce,
+// {
+//     fn to_many(self, mapfn:MapFn) -> (TaskCurrier<Currier>, TaskMap<MapFn,R>)
+//         where MapFn: Fndecl<(Currier::R,),R>
+//     {
+//         (
+//             TaskCurrier {
+//                 currier: self.0.currier,
+//                 id: self.0.id,
+//                 kind: self.0.kind,
+//             },
+//             TaskMap::ToMany(mapfn, PhantomData),
+//         )
+//     }
+// }
 
 #[test]
 fn test_task_build_many() {
@@ -226,9 +280,9 @@ impl<P> Fndecl<(P,),()> for NullMapFn<P> {
     }
 }
 /// constructs a task without cond
-impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for F {
+    fn into_task(self) -> TaskBuild<Currier<F,(),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
                 id: None,
@@ -237,8 +291,8 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapF
             TaskMap::None
         )
     }
-    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+    fn into_exit_task(self)->TaskBuild<Currier<F,(),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
                 id: None,
@@ -248,9 +302,9 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapF
         )
     }
 }
-impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for (F,usize) {
+    fn into_task(self) -> TaskBuild<Currier<F,(),R>,NullMapFn<R>,()> {
+        TaskBuild(
             TaskCurrier {
                 currier: Currier::from(self.0),
                 id: Some(self.1),
@@ -259,8 +313,8 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapF
             TaskMap::None
         )
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+    fn into_exit_task(self) -> TaskBuild<Currier<F,(),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
                 id: Some(self.1),
@@ -271,9 +325,9 @@ impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapF
     }
 }
 
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for F {
+    fn into_task(self) -> TaskBuild<Currier<F,(P1,),R>,NullMapFn<R>,()> {
+        TaskBuild(
             TaskCurrier {
                 currier: Currier::from(self),
                 id: None,
@@ -282,8 +336,8 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<
             TaskMap::None
         )
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+    fn into_exit_task(self) -> TaskBuild<Currier<F,(P1,),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
                 id: None,
@@ -293,9 +347,9 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<
         )
     }
 }
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for (F,usize) {
+    fn into_task(self) -> TaskBuild<Currier<F,(P1,),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
                 id: Some(self.1),
@@ -304,8 +358,8 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<
             TaskMap::None
         )
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
-        (
+    fn into_exit_task(self) -> TaskBuild<Currier<F,(P1,),R>,NullMapFn<R>,()> {
+        TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
                 id: Some(self.1),
@@ -318,9 +372,9 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<
 
 macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>,TaskMap<NullMapFn<R>,()>> for F {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
-                (
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>,NullMapFn<R>,()> for F {
+            fn into_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> {
+                TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self),
                         id: None,
@@ -330,8 +384,8 @@ macro_rules! impl_task_build_new {
                 )
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
-                (
+            fn into_exit_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> {
+                TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self),
                         id: None,
@@ -343,9 +397,9 @@ macro_rules! impl_task_build_new {
         }
 
 
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>> for (F, usize) {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
-                (
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> for (F, usize) {
+            fn into_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> {
+                TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self.0),
                         id: Some(self.1),
@@ -355,8 +409,8 @@ macro_rules! impl_task_build_new {
                 )
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
-                (
+            fn into_exit_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> {
+                TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self.0),
                         id: Some(self.1),

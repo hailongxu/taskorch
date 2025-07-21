@@ -1,4 +1,4 @@
-use taskorch::{Pool, Queue, TaskBuildNew, TaskBuildOp};
+use taskorch::{Pool, Queue, TaskBuildNew};
 // create 3 tasks and run 
 fn main() {
     println!("----- test task orch -----");

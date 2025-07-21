@@ -2,9 +2,8 @@ use crate::{
     curry::CallOnce,
     meta::{Fndecl, Identical},
     queue::{when_ci_comed, C1map, WhenTupleComed},
-    task::{Task, TaskMap},
+    task::{Task, TaskBuild, TaskCurrier, TaskMap},
     Queue,
-    TaskCurrier
 };
 
 use std::{any::{Any, TypeId}, fmt::Debug};
@@ -28,7 +27,7 @@ impl TaskSubmitter {
     /// # returns
     /// * `usize` - The ID of the task
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR>(&self,(task,map):(TaskCurrier<C>,TaskMap<MapFn,MapR>))->usize
+    pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->usize
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
