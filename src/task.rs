@@ -1,10 +1,12 @@
 
 use std::{
     any::Any,
-    sync::atomic::{AtomicUsize, Ordering},
+    marker::PhantomData,
+    sync::atomic::{AtomicUsize, Ordering}
 };
 
 use crate::curry::{CallOnce, CallParam, Currier};
+use crate::meta::Fndecl;
 
 /// Defines the behavior type for tasks.
 #[derive(Clone,Copy)]
@@ -77,7 +79,14 @@ pub struct TaskCurrier<Currier> {
     pub(crate) kind: Kind,
 }
 
+pub enum TaskMap<MapFn,R> {
+    None,
+    To(Anchor),
+    ToMany(MapFn,PhantomData<R>),
+}
+
 impl<C> TaskCurrier<C> {
+    /// get task id from task, only if the task has conds.
     pub fn id(&self)->Option<usize> {
         self.id
     }
@@ -105,20 +114,20 @@ impl<T> Task for TaskCurrier<T>
 }
 
 /// A builder trait for constructing tasks with an optional task ID.
-pub trait TaskBuildNew<TC> {
+pub trait TaskBuildNew<TC,TM> {
     /// construct a task.
     /// # Returns
     /// A tuple containing:
     /// - The `Task Currier` (`TC`)
     /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
-    fn into_task(self)->(TC,Option<Anchor>);
+    fn into_task(self)->(TC,TM);
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_task()` instead for clearer ownership semantic. \
                `task()` will be removed in next release."
     )]
-    fn task(self)->(TC,Option<Anchor>) where Self:Sized {
+    fn task(self)->(TC,TM) where Self:Sized {
         self.into_task()
     }
 
@@ -126,142 +135,235 @@ pub trait TaskBuildNew<TC> {
     /// # Note
     /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
     /// after task completion.
-    fn into_exit_task(self)->(TC,Option<Anchor>);
+    fn into_exit_task(self)->(TC,TM);
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_exit_task()` instead for clearer ownership semantic. \
                `exit_task()` will be removed in next release."
     )]
-    fn exit_task(self)->(TC,Option<Anchor>) where Self:Sized {
+    fn exit_task(self)->(TC,TM) where Self:Sized {
         self.into_exit_task()
     }
 }
 /// TaskBuildOp provides target anchor configuration.
-pub trait TaskBuildOp<Currier> {
+pub trait TaskBuildOp<Currier,R> {
     /// Configures the target anchor to `(taskid, condid)`.
     /// # Arguments:
     /// * `taskid` - target task identifier
     /// * `i` - cond #index (0-based)
-    fn to(self, taskid:usize,i:usize)->Self;
+    fn to(self, taskid:usize,i:usize)->(TaskCurrier<Currier>,TaskMap<NullMapFn<R>,()>);
 }
 
-impl<Currier> TaskBuildOp<Currier> for (TaskCurrier<Currier>,Option<Anchor>) {
-    fn to(self, taskid:usize,i:usize)->Self {
+pub trait TaskBuildOpMany<Currier,MapFn,R>
+    where Currier: CallOnce,
+{
+    fn to_many(self, mapfn:MapFn)->(TaskCurrier<Currier>, TaskMap<MapFn,R>)
+        where MapFn: Fndecl<(Currier::R,),R>;
+}
+
+// struct PassthroughMapFn;
+// impl<P> Fndecl<(P,),P> for PassthroughMapFn {
+//     type Pt=(P,);
+//     type R=((P,);
+//     fn call(self,_ps:Self::Pt)->Self::R {
+//     }
+// }
+
+impl<Currier> TaskBuildOp<Currier,Currier::R> for (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>)
+    where
+    Currier: CallOnce,
+{
+    fn to(self, taskid:usize, i:usize) -> (TaskCurrier<Currier>, TaskMap<NullMapFn<Currier::R>,()>) {
         (
             TaskCurrier {
                 currier: self.0.currier,
                 id: self.0.id,
                 kind: self.0.kind,
             },
-            Some(Anchor(taskid,i))
+            TaskMap::To(Anchor(taskid, i))
         )
     }
 }
 
-/// constructs a task without cond
-impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self),
-            id: None,
-            kind: Kind::Normal,
-        },None)
-    }
-    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self),
-            id: None,
-            kind: Kind::Exit,
-        },None)
-    }
-}
-impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self.0),
-            id: Some(self.1),
-            kind: Kind::Normal,
-        },None)
-    }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self.0),
-            id: Some(self.1),
-            kind: Kind::Exit,
-        },None)
+impl<Currier,MapFn1,R1,MapFn,R> TaskBuildOpMany<Currier,MapFn,R> for (TaskCurrier<Currier>, TaskMap<MapFn1,R1>)
+    where
+    Currier: CallOnce,
+{
+    fn to_many(self, mapfn:MapFn) -> (TaskCurrier<Currier>, TaskMap<MapFn,R>)
+        where MapFn: Fndecl<(Currier::R,),R>
+    {
+        (
+            TaskCurrier {
+                currier: self.0.currier,
+                id: self.0.id,
+                kind: self.0.kind,
+            },
+            TaskMap::ToMany(mapfn, PhantomData),
+        )
     }
 }
 
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for F {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self),
-            id: None,
-            kind: Kind::Normal,
-        },None)
-    }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self),
-            id: None,
-            kind: Kind::Exit,
-        },None)
+#[test]
+fn test_task_build_many() {
+    let task = (||3).into_task();
+    if true {
+        task.to_many(|_r: i32| {
+            ((3, Anchor(0, 0)),)
+        });
+    } else {
+        task.to(3,0);
     }
 }
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>> for (F,usize) {
-    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self.0),
-            id: Some(self.1),
-            kind: Kind::Normal,
-        },None)
+
+pub struct NullMapFn<P> {
+    phantom: PhantomData<P>
+}
+impl<P> Fndecl<(P,),()> for NullMapFn<P> {
+    type Pt=(P,);
+    type R=();
+    fn call(self,_ps:Self::Pt)->Self::R {
     }
-    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,Option<Anchor>) {
-        (TaskCurrier {
-            currier: Currier::from(self.0),
-            id: Some(self.1),
-            kind: Kind::Exit,
-        },None)
+}
+/// constructs a task without cond
+impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>> for F {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self),
+                id: None,
+                kind: Kind::Normal,
+            },
+            TaskMap::None
+        )
+    }
+    fn into_exit_task(self)->(TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self),
+                id: None,
+                kind: Kind::Exit,
+            },
+            TaskMap::None
+        )
+    }
+}
+impl<F:FnOnce()->R,R> TaskBuildNew<TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>> for (F,usize) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self.0),
+                id: Some(self.1),
+                kind: Kind::Normal,
+            },
+            TaskMap::None
+        )
+    }
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self.0),
+                id: Some(self.1),
+                kind: Kind::Exit,
+            },
+            TaskMap::None
+        )
+    }
+}
+
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>> for F {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self),
+                id: None,
+                kind: Kind::Normal,
+            },
+            TaskMap::None
+        )
+    }
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self),
+                id: None,
+                kind: Kind::Exit,
+            },
+            TaskMap::None
+        )
+    }
+}
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>> for (F,usize) {
+    fn into_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self.0),
+                id: Some(self.1),
+                kind: Kind::Normal,
+            },
+            TaskMap::None
+        )
+    }
+    fn into_exit_task(self) -> (TaskCurrier<Currier<F,(P1,),R>>,TaskMap<NullMapFn<R>,()>) {
+        (
+            TaskCurrier {
+                currier: Currier::from(self.0),
+                id: Some(self.1),
+                kind: Kind::Exit,
+            },
+            TaskMap::None
+        )
     }
 }
 
 macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for F {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
-                (TaskCurrier {
-                    currier: Currier::from(self),
-                    id: None,
-                    kind: Kind::Normal,
-                }, None)
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>,TaskMap<NullMapFn<R>,()>> for F {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
+                (
+                    TaskCurrier {
+                        currier: Currier::from(self),
+                        id: None,
+                        kind: Kind::Normal,
+                    },
+                    TaskMap::None
+                )
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
-                (TaskCurrier {
-                    currier: Currier::from(self),
-                    id: None,
-                    kind: Kind::Exit,
-                }, None)
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
+                (
+                    TaskCurrier {
+                        currier: Currier::from(self),
+                        id: None,
+                        kind: Kind::Exit,
+                    },
+                    TaskMap::None
+                )
             }
         }
 
 
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>> for (F, usize) {
-            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
-                (TaskCurrier {
-                    currier: Currier::from(self.0),
-                    id: Some(self.1),
-                    kind: Kind::Normal,
-                }, None)
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>> for (F, usize) {
+            fn into_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
+                (
+                    TaskCurrier {
+                        currier: Currier::from(self.0),
+                        id: Some(self.1),
+                        kind: Kind::Normal,
+                    },
+                    TaskMap::None
+                )
             }
             
-            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, Option<Anchor>) {
-                (TaskCurrier {
-                    currier: Currier::from(self.0),
-                    id: Some(self.1),
-                    kind: Kind::Exit,
-                }, None)
+            fn into_exit_task(self) -> (TaskCurrier<Currier<F, ($($P,)+), R>>, TaskMap<NullMapFn<R>,()>) {
+                (
+                    TaskCurrier {
+                        currier: Currier::from(self.0),
+                        id: Some(self.1),
+                        kind: Kind::Exit,
+                    },
+                    TaskMap::None
+                )
             }
         }
     };

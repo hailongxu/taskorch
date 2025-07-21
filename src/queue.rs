@@ -139,6 +139,7 @@ impl C1map {
                     cannot be updated with {{{v:?}}}.");
             return None;
         }
+        trace!("cond-task(#{}) receives cond(#{}) {{{v:?}}}", anchor.id(),anchor.i());
         Some(param.is_full())
     }
 }
@@ -150,7 +151,6 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:&T, c1map:C1map, (qid
         // the log has been processed in update_ci
         return false;
     };
-    trace!("cond-task(#{}) receives cond(#{}) {{{v:?}}}", to.id(),to.i());
     let Some((task,postdo)) = c1map.remove(to.id()) else {
         error!("cond task(#{}) does not find.",to.id());
         return  false;
@@ -168,6 +168,12 @@ pub(crate) fn when_nil_comed() {}
 pub(crate) trait WhenTupleComed {
     fn foreach(&self, c1map:C1map, q:(usize,Queue));
 }
+
+impl WhenTupleComed for () {
+    fn foreach(&self, _c1map:C1map, _q:(usize,Queue)) {
+    }
+}
+
 impl<T:'static+Debug> WhenTupleComed for ((T,Anchor),) {
     fn foreach(&self, c1map:C1map, q:(usize,Queue)) {
         when_ci_comed(&self.0.1, &self.0.0, c1map, q);

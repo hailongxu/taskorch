@@ -1,7 +1,8 @@
 use crate::{
     curry::CallOnce,
-    queue::{when_ci_comed, C1map},
-    task::{Task,Anchor},
+    meta::{Fndecl, Identical},
+    queue::{when_ci_comed, C1map, WhenTupleComed},
+    task::{Task, TaskMap},
     Queue,
     TaskCurrier
 };
@@ -27,32 +28,59 @@ impl TaskSubmitter {
     /// # returns
     /// * `usize` - The ID of the task
     #[allow(private_bounds)]
-    pub fn submit<C>(&self,(task,to):(TaskCurrier<C>,Option<Anchor>))->usize
+    pub fn submit<C,MapFn,MapR>(&self,(task,map):(TaskCurrier<C>,TaskMap<MapFn,MapR>))->usize
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
         C::R: 'static + Debug,
+        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
+        MapR: Send + 'static,
+        MapFn::R: WhenTupleComed,
     {
         let c1map = self.c1map.clone();
         let c1queue = (self.qid,self.queue.clone());
         let postdo = move |r: Box<dyn Any>| {
-            let Some(to) = to else {
-                return;
-            };
-            let _actual_type = r.type_id();
-            let Ok(r) = r.downcast::<C::R>() else {
-                let _expected_type = TypeId::of::<C::R>();
-                let _expected_type_name = std::any::type_name::<C::R>();
-                error!(
-                    "to {to:?}.\ndowncast failed: expected {}, got {:?}",
-                    _expected_type_name, _actual_type
-                );
-                panic!("failed to conver to R type");
-                // return;
-            };
-            let r: &C::R = &*r;
-            when_ci_comed(&to, r, c1map.clone(), c1queue);
+            match map {
+                TaskMap::None => return,
+                // to single anchor
+                TaskMap::To(to) => {
+                    let _actual_type = r.type_id();
+                    let Ok(r) = r.downcast::<C::R>() else {
+                        let _expected_type = TypeId::of::<C::R>();
+                        let _expected_type_name = std::any::type_name::<C::R>();
+                        error!(
+                            "to {to:?}.\ndowncast failed: expected {}, got {:?}",
+                            _expected_type_name, _actual_type
+                        );
+                        panic!("failed to conver to R type");
+                        // return;
+                    };
+                    let r: &C::R = &*r;
+                    when_ci_comed(&to, r, c1map, c1queue);
+                },
+                // to multi-anchor
+                TaskMap::ToMany(mapfn, _) => {
+                    let _actual_type = r.type_id();
+                    let Ok(r) = r.downcast::<C::R>() else {
+                        let _expected_type = TypeId::of::<C::R>();
+                        let _expected_type_name = std::any::type_name::<C::R>();
+                        error!(
+                            "to Many Anchors.\ndowncast failed: expected {}, got {:?}",
+                            _expected_type_name, _actual_type
+                        );
+                        panic!("failed to conver to R type");
+                        // return;
+                    };
+                    let r: C::R = *r;
+                    // dispatch to multi-target
+                    let rtuple = mapfn.call((r,).into());
+                    rtuple.foreach(c1map, c1queue);
+                }
+            }
         };
+
         let postdo = Box::new(postdo);
 
         if 0 == task.currier.count() {

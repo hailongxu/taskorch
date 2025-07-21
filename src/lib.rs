@@ -18,7 +18,8 @@ use queue::C1map;
 pub use queue::{spawn_thread, Queue};
 pub use task::{
     Anchor,Kind,
-    TaskCurrier,TaskBuildNew,TaskBuildOp,
+    TaskCurrier,
+    TaskBuildNew,TaskBuildOp,TaskBuildOpMany,
     taskid_next,
 };
 
