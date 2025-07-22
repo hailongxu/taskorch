@@ -95,14 +95,14 @@ impl Pool {
         let id = self.next_id();
         // update the queue
         let _r = self.queues.insert(id, queue.clone());
-        debug!("Queue(#{id}) created.");
+        debug!("Q#{id} created.");
         Some(id)
     }
 
     /// return thread.id in pool
     pub fn spawn_thread_for(&mut self, qid:usize)->Option<usize> {
         let Some(queue) = self.queue(qid) else {
-            error!("Queue(#{qid}) does not exist; thread starting is not allowed.");
+            error!("Q#{qid} does not exist; thread starting is not allowed.");
             return None;
         };
         spawn_thread(queue).collect_into(self)
@@ -147,7 +147,7 @@ impl Pool {
             }
             let thidstr = format!("{:?} ",thid);
             threadid_list_log.push_str(&thidstr);
-            warn!("pool received ({thid:?}) exited ok.");
+            info!("pool received normal exit from {thid:?}.");
         }
         warn!("pool with {thcount} threads: [{threadid_list_log}] exited ok.");
     }

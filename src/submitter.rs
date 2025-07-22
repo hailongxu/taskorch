@@ -4,6 +4,7 @@ use crate::{
     queue::{when_ci_comed, C1map, WhenTupleComed},
     task::{Task, TaskBuild, TaskCurrier, TaskMap},
     Queue,
+    log::{Level,LEVEL},
 };
 
 use std::{any::{Any, TypeId}, fmt::Debug};
@@ -50,7 +51,7 @@ impl TaskSubmitter {
                         let _expected_type = TypeId::of::<C::R>();
                         let _expected_type_name = std::any::type_name::<C::R>();
                         error!(
-                            "to {to:?}.\ndowncast failed: expected {}, got {:?}",
+                            "task return value downcast failed: expected {}, got {:?}",
                             _expected_type_name, _actual_type
                         );
                         panic!("failed to conver to R type");
@@ -66,7 +67,7 @@ impl TaskSubmitter {
                         let _expected_type = TypeId::of::<C::R>();
                         let _expected_type_name = std::any::type_name::<C::R>();
                         error!(
-                            "to Many Anchors.\ndowncast failed: expected {}, got {:?}",
+                            "task return value downcast failed: expected {}, got {:?}",
                             _expected_type_name, _actual_type
                         );
                         panic!("failed to conver to R type");
@@ -83,14 +84,19 @@ impl TaskSubmitter {
         let postdo = Box::new(postdo);
 
         if 0 == task.currier.count() {
+            if LEVEL >= Level::Warn {
+                if let Some(_id) = task.id {
+                    warn!("Ignore the taskid {_id}: no conditions found for this task.");
+                }
+            }
             let task = Box::new(task);
             self.queue.add_boxtask(task,postdo);
-            debug!("task(#{}) added into Qid(#{})", usize::MAX, self.qid);
+            debug!("task#{} added into Q#{}", usize::MAX, self.qid);
             usize::MAX
         } else {
             let taskid = task.id;
             let id = self.c1map.insert(task, postdo, taskid).unwrap();
-            debug!("task(#{id}) with cond added into waitQueue");
+            debug!("cond task#{id} added into waitQueue");
             id
         }
     }

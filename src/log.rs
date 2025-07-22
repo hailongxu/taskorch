@@ -7,7 +7,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 #[allow(dead_code)]
+#[derive(PartialEq, PartialOrd)]
 pub(crate) enum Level {
+    Off,
     Error,
     Warn,
     Info,
@@ -17,17 +19,17 @@ pub(crate) enum Level {
 
 /// Log level options (mutually exclusive - select one or none)
 /// When multiple are selected, compilation will fail.
-pub(crate) const LEVEL: Option<Level> = {
+pub(crate) const LEVEL: Level = {
     #[cfg(feature = "log-error")]
-    const MAX_LEVEL: Option<Level> = Some(Level::Error);
+    const MAX_LEVEL: Level = Level::Error;
     #[cfg(feature = "log-warn")]
-    const MAX_LEVEL: Option<Level> = Some(Level::Warn);
+    const MAX_LEVEL: Level = Level::Warn;
     #[cfg(feature = "log-info")]
-    const MAX_LEVEL: Option<Level> = Some(Level::Info);
+    const MAX_LEVEL: Level = Level::Info;
     #[cfg(feature = "log-debug")]
-    const MAX_LEVEL: Option<Level> = Some(Level::Debug);
+    const MAX_LEVEL: Level = Level::Debug;
     #[cfg(feature = "log-trace")]
-    const MAX_LEVEL: Option<Level> = Some(Level::Trace);
+    const MAX_LEVEL: Level = Level::Trace;
     #[cfg(not(any(
         feature = "log-error",
         feature = "log-warn",
@@ -35,7 +37,7 @@ pub(crate) const LEVEL: Option<Level> = {
         feature = "log-debug",
         feature = "log-trace",
     )))]
-    const MAX_LEVEL: Option<Level> = None;
+    const MAX_LEVEL: Level = Level::Off;
     MAX_LEVEL
 };
 
@@ -74,6 +76,7 @@ pub(crate) use level_color::*;
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 pub(crate) static LOG_GLOBAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+pub(crate) const NAME:&'static str = "taskorch";
 
 #[allow(unused_macros)]
 macro_rules! log {
@@ -97,13 +100,15 @@ macro_rules! log_str {
         let filepre = myfilepre!();
         let file = myfile!();
         let (linepre,line) = myline!();
+        let name = crate::log::NAME;
 
         format!(
             "{color_head}[{ts} \
-            {level}\
+            {level:<5} \
+            {name}\
             {filepre}{file}{linepre}{line} \
-            {thid_head}{thid_tail}] \
-            {}{color_tail}",
+            {thid_head}{thid_tail}]\
+            {color_tail} {}",
             format!($($args)*))
     }}
 }
@@ -394,12 +399,12 @@ macro_rules! sleep_millis {
 
 #[test]
 fn test_log() {
-    error!("error");
-    warn!("warn");
-    info!("info");
+    error!("message error");
+    warn!("message warn");
+    info!("message info");
     sleep_millis!(10);
-    debug!("debug");
-    trace!("trace");
+    debug!("message debug");
+    trace!("message trace");
 }
 
 fn format_threadid(buf:&mut[u8;32])->usize {

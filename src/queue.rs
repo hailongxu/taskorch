@@ -91,7 +91,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
                 let _unused = queue.1.wait(m);
             }
         }
-        warn!("exits ok.");
+        info!("current thread exited normally.");
     });
     Jhandle(handle,quit_flag)
 }
@@ -123,11 +123,11 @@ impl C1map {
     fn update_ci<T:'static+Debug>(&self,anchor:&Anchor,v:&T)->Option<bool> {
         let mut lock = self.0.0.lock().unwrap();
         let Some((task,_postdo)) = lock.get_mut(&anchor.id()) else {
-            error!("task(#{}) was not found, the cond(#{}) could not be updated", anchor.id(), anchor.i());
+            error!("task#{} was not found, the cond#{} could not be updated", anchor.id(), anchor.i());
             return None;
         };
         let Some(param) = task.as_param_mut() else {
-            error!("task(#{}) failed to acquire cond(#{}), update skipped.", anchor.id(), anchor.i());
+            error!("task#{} failed to acquire cond#{}, update skipped.", anchor.id(), anchor.i());
             return None;
         };
         if !param.set(anchor.i(), v) {
@@ -135,11 +135,15 @@ impl C1map {
             let _i = anchor.i();
             let _this_type_name = param.typename(_i);
             let _data_type_name  = type_name::<T>();
-            error!("task(#{_taskid}).cond#{_i} has type <{_this_type_name}> not identical to <{_data_type_name}>, \
+            error!("task#{_taskid}.cond#{_i} has type <{_this_type_name}> not identical to <{_data_type_name}>, \
                     cannot be updated with {{{v:?}}}.");
             return None;
         }
-        trace!("cond-task(#{}) receives cond(#{}) {{{v:?}}}", anchor.id(),anchor.i());
+        if cfg!(feature="log-trace") {
+            trace!("cond task#{} received cond#{}={{{v:?}}}", anchor.id(),anchor.i());
+        } else {
+            debug!("cond task#{} received cond#{}", anchor.id(),anchor.i());
+        }
         Some(param.is_full())
     }
 }
@@ -152,10 +156,10 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(to:&Anchor, v:&T, c1map:C1map, (qid
         return false;
     };
     let Some((task,postdo)) = c1map.remove(to.id()) else {
-        error!("cond task(#{}) does not find.",to.id());
+        error!("cond task#{} does not find.",to.id());
         return  false;
     };
-    debug!("cond-task(#{}) has all been satified and schedued to Q(#{qid})", to.id());
+    debug!("cond task#{} has all conditions been satified and scheduled to Q#{qid}", to.id());
     q.add_boxtask(task,postdo);
     true
 }

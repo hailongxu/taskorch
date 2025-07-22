@@ -145,7 +145,7 @@ impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
 
 impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
 {
-    pub fn to_many<MapFn,R>(self, mapfn:MapFn) -> TaskBuild<Currier, MapFn,R>
+    pub fn fan_tuple_with<MapFn,R>(self, mapfn:MapFn) -> TaskBuild<Currier, MapFn,R>
         where MapFn: Fndecl<(Currier::R,),R>
     {
         TaskBuild (
@@ -262,7 +262,7 @@ pub trait TaskBuildNew<C,F,R> {
 fn test_task_build_many() {
     let task = (||3).into_task();
     if true {
-        task.to_many(|_r: i32| {
+        task.fan_tuple_with(|_r: i32| {
             ((3, Anchor(0, 0)),)
         });
     } else {
