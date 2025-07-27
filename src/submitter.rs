@@ -22,9 +22,10 @@ impl TaskSubmitter {
     /// Enqueues a new task for future scheduling
     ///
     /// # argments
-    /// * `task` - The task to be added, wrapped in a `TaskCurrier`.
-    /// * `taskid` - An optional identifier for the task, used for tracking.
-    ///
+    /// * `TaskBuild` - generate from `.into_task()` 
+    /// * `task` - The main body of the task to be executed. 
+    /// * `map` - Mapping function for processing and forwarding the task result
+    /// 
     /// # returns
     /// * `usize` - The ID of the task
     #[allow(private_bounds)]
@@ -81,6 +82,8 @@ impl TaskSubmitter {
             }
         };
 
+        //
+        // postdo maybe added another param of taskid indicating where the value comes from.
         let postdo = Box::new(postdo);
 
         if 0 == task.currier.count() {

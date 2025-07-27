@@ -1,11 +1,20 @@
 
-use taskorch::{Pool, Queue, TaskBuildNew, TaskSubmitter};
+use taskorch::{Anchor, Pool, Queue, TaskBuildNew, TaskSubmitter};
 
-mod util;
-use util::*;
-
-/// construct Q1 with 2 thread
-/// construct Q2 with 1 thread
+/// task flow
+/// 1->N : [A]->[B1,B2,count]
+/// N->1 : [B1,B2]->[Add]
+/// 1->1 : [Add]->[Exit]
+/// 1->1 : [count]->[Exit]
+/// 
+/// task belongings
+/// [B1,B2,Add] in Q1
+/// [A,count] in Q2
+/// 
+/// thread
+/// Q1 with 2 thread
+/// Q2 with 1 thread
+/// 
 fn main() {
     println!("----- test task orch -----");
 
@@ -19,8 +28,7 @@ fn main() {
     let submitter2 = pool.task_submitter(qid2).unwrap();
 
     // Step#3. create tasks
-    add_task_to_q1_by(&submitter1);
-    add_task_to_q2_by(&submitter2);
+    add_task(&submitter1,&submitter2);
 
     // Step#4. start a thread and run
     pool.spawn_thread_for(qid1);
@@ -31,47 +39,67 @@ fn main() {
     pool.join();
 }
 
-fn add_task_to_q1_by(submitter:&TaskSubmitter) {
-    const Q:&'static str = "Q#A";
-    const PAD:&'static str = "";
+fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
     
-    submitter.submit((||ff(Q, PAD,"A-free","Hi, I am free.")).into_task());
+    submitter1.submit((||println!("task='free': Hi, I'm free#11, 1 2 ..")).into_task());
+    submitter1.submit((||println!("task='free': Hi, I'm free#12, 1 2 ..")).into_task());
+    submitter2.submit((||println!("task='free': Hi, I'm free#2, 3 4 ..")).into_task());
+
+    // submitter 1
 
     // Exit task construction
     // This elegant approach ensures all threads exit one by one,
     // guaranteeing each thread can receive the exit message
-    let exit_task = |a:i32| exit_ff(Q,PAD,"Z1", a);
-    let id_exit = submitter.submit(exit_task.into_exit_task());
-    let exit_task = move|a:i32| exit_ffpr(Q, PAD,"Z2",a,"Z1");
-    let id_exit = submitter.submit(exit_task.into_exit_task().to(id_exit,0));
+    let id_exit = submitter1.submit(
+        (|_:i32| {println!("task='exit2': exit");})
+        .into_exit_task());
+    let id_exit = submitter1.submit(
+        (|_:i32| {println!("task='exit1': exit and [1] => task='exit2'");1})
+        .into_exit_task().to(id_exit,0));
 
-    let task = move|a:i32,b:i32| ffadd(Q, PAD,"Aadd", a, b, "Z2");
-    let id_add = submitter.submit(task.into_task().to(id_exit,0));
+    // task add
+    let id_add = submitter1.submit(
+        (|a:i32,b:i32|{println!("task='add': (a:{a:?}+b:{b:?}) => task='exit'");a+b})
+        .into_task().to(id_exit, 0)
+    );
 
-    let task = move||ffr(Q,PAD,"A1",(2,"Aadd"));
-    let _ = submitter.submit(task.into_task().to(id_add, 0));
+    // task B1
+    let id_b1 = submitter1.submit(
+        (|a:i32|{println!("task='B1': recv (a:{a}) and [{a}] => task='add'");a})
+        .into_task().to(id_add, 0)
+    );
 
-    let task = move||ffr(Q,PAD,"A2",(3,"Aadd"));
-    let _ = submitter.submit(task.into_task().to(id_add, 1));
-}
+    // task B2
+    let id_b2 = submitter1.submit(
+        (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}]=> task='add'");a})
+        .into_task().to(id_add, 1)
+    );
 
-fn add_task_to_q2_by(submitter:&TaskSubmitter) {
-    const Q:&'static str = "Q#B";
-    const PAD:&'static str = "";
+    // submitter2
 
-    submitter.submit((||ff(Q, PAD,"B-free", "Hi, I am free too.")).into_task());
+    // task exit3
+    let id_exit3 = submitter2.submit(
+        (|_:usize| {println!("task='exit3': exit");})
+        .into_exit_task());
 
-    // Exit task with one condition
-    let exit_task = |a:i32| exit_ff(Q, PAD,"Y1", a);
-    let id_exit = submitter.submit(exit_task.into_exit_task());
+    // task count
+    let id_count = submitter2.submit(
+        (|a:&str|{println!("task='count': (a:{a:?}) and [{}] => task='exit3'",a.len());a.len()})
+        .into_task().to(id_exit3, 0)
+    );
 
-    let task = move|a:i32| ffpr(Q,PAD, "B1", a, (3, "Y1"));
-    let taskid = submitter.submit(task.into_task().to(id_exit,0));
-
-    let task = move|a:i32| ffpr(Q,PAD, "B2", a, (4, "B1"));
-    let taskid = submitter.submit(task.into_task().to(taskid, 0));
-
-    let task = move||ffr(Q,PAD,"B3",(4,"B2"));
-    let _ = submitter.submit(task.into_task().to(taskid,0));
+    // task A
+    let _ = submitter2.submit(
+        (||{println!("task='params': and pass [1,2,'123456789'] to task=['B1','B2','count']");1})
+            .into_task().fan_tuple_with(
+            move |_:i32| {
+                (
+                    (1,Anchor(id_b1,0)),
+                    (2,Anchor(id_b2,0)),
+                    ("123456789",Anchor(id_count,0)),
+                )
+            }
+        )
+    );
 }
 

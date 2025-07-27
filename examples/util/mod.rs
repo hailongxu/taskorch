@@ -35,6 +35,24 @@ pub fn uptime()->(u64,u32) {
 // common function for testing
 
 // fun add with 2 param and return i32
+pub(crate) fn ffsum(
+    qname:&'static str, pad:&'static str, tname:&'static str, 
+    a: i32, // p1
+    b: i32, // p2
+    c: i32,
+    to: &'static str // target task name
+    )->i32
+{
+    sleep_millis!(4);
+    let r = a+b+c;
+    let ti = task_info!(qname);
+    // let ti = format!("{ti} task:{tname}");
+    println!("{ti}  {pad}task '{tname}' recv (#0:{a}, #1:{b}, #2:{c}) and pass cond `a+b+c` [{r}] to task '{to}'.");
+    r
+}
+
+
+// fun add with 2 param and return i32
 pub(crate) fn ffadd(
     qname:&'static str, pad:&'static str, tname:&'static str, 
     a: i32, // p1

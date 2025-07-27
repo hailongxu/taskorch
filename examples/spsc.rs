@@ -1,8 +1,5 @@
 
-use taskorch::{Pool, Queue, TaskBuildNew, TaskSubmitter};
-
-mod util;
-use util::*;
+use taskorch::{Anchor, Pool, Queue, TaskBuildNew, TaskSubmitter};
 
 // Thread 1: Task execution (consumer) role
 // Thread 2: Task generation (producer) role
@@ -31,42 +28,33 @@ fn main() {
 }
 
 fn consume_task_prompt(submitter:&TaskSubmitter) {
-    const Q:&'static str = "consumer";
-    const PAD:&'static str = "  ";
-    submitter.submit((||ff(Q, PAD, "init", "waiting task to do")).into_task());
+    submitter.submit((||println!("Init: waiting task to do")).into_task());
 }
 
-
 fn produce_task(submitter:TaskSubmitter) {
-    const Q:&'static str = "consumer";
-    const PAD:&'static str = "  ";
+    prompt("hello");
+    submitter.submit((||println!("consmue task='hello': helle every!")).into_task());
 
-    prompt("warn");
-    submitter.submit((||ff(Q, PAD,"warn", "prepare to work.")).into_task());
+    prompt("exit");
+    let id_exit = submitter.submit((|a:i32|println!("consume task='exit': recv cond={a} and exit.")).into_exit_task());
 
-    // Exit task with one condition
-    const XN: &'static str = "X";
-    let exit_task = |a:i32| exit_ff(Q, PAD,XN, a);
-    prompt(XN);
-    let id_exit = submitter.submit(exit_task.into_exit_task());
+    prompt("add");
+    let id_add = submitter.submit((
+        |a:i32,b:i32|{
+            println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
+            a+b
+        }).into_task().to(id_exit,0));
 
-    const AN: &'static str = "Aadd";
-    let task = move|a:i32,b:i32| ffadd(Q,PAD, AN, a, b, XN);
-    prompt(AN);
-    let id_add = submitter.submit(task.into_task().to(id_exit,0));
-
-    let task = move||ffr(Q,PAD,"A1",(2,AN));
-    prompt("A1");
-    let _ = submitter.submit(task.into_task().to(id_add, 0));
-
-    let task = move||ffr(Q,PAD,"A2",(3,AN));
-    prompt("A2");
-    let _ = submitter.submit(task.into_task().to(id_add, 1));
+    prompt("params");
+    let _ = submitter.submit((
+        ||{println!("consume task='params': pass (1, 2) to task='add'");}
+    ).into_task().fan_tuple_with(move|_:()|(
+        (1, Anchor(id_add, 0)), // to add.cond#0
+        (2, Anchor(id_add, 1)), // to add.cond#1
+        // (2, Anchor(id_add, 1)), /// to add.cond#1, Error, if use '///' !!!!!
+    )));
 }
 
 fn prompt(taskname:&'static str) {
-    const Q:&'static str = "producer";
-    sleep_millis!();
-    let info = task_info!(Q);
-    println!("{info}  submit task '{taskname}' to consumer.");
+    println!("produce task='{taskname}'.");
 }

@@ -149,7 +149,7 @@ impl Pool {
             threadid_list_log.push_str(&thidstr);
             info!("pool received normal exit from {thid:?}.");
         }
-        warn!("pool with {thcount} threads: [{threadid_list_log}] exited ok.");
+        info!("pool with {thcount} threads: [{threadid_list_log}] exited ok.");
     }
 }
 

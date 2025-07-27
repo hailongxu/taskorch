@@ -47,12 +47,15 @@ pub(crate) trait Task
     fn kind(&self)->Kind;
 }
 
+/// Represents the position where a condition occurs — specifically, the position of a parameter.
+///
+/// This is determined by a combination of the task ID and zero-based condition index,
+/// which together uniquely identify where the parameter is located in the system.
 #[derive(Clone,Copy,Debug)]
-/// Represents a position where a condition occurs.
 pub struct Anchor(
     /// The task ID associated with the condition.
     pub usize,
-    /// The index offset within the condition set.
+    /// The zero-based index of the parameter within the task's parameter list.
     pub usize,
 );
 
@@ -145,6 +148,50 @@ impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
 
 impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
 {
+    /// Distribute the result of bady task to multi anchors.
+    /// 
+    /// # Example:
+    /// 
+    /// ```rust
+    /// // the 1st task#1 receives cond i16 from task
+    /// let task1 = (|_:i16|{},1).into_task(); 
+    /// // the 2nd task#2 receives cond &'static str from task
+    /// let task2 = (|_:&'static str|{},2).into_task();
+    /// // create task pass the its value to task1 and task2
+    /// let task  = (||3i32).into_task(); // the task main body with return type i32
+    /// 
+    /// // distribute the result to task1 and task2
+    /// 
+    /// // the type of input must be identical to return type of task body.
+    /// task.fan_tuple_with(|_:i32|( 
+    ///     (8i16,    Anchor(1,0)), // the 1st branch output
+    ///     ("apple", Anchor(2,0)), // the 2nd branch output
+    ///     ));
+    /// ```
+    /// 
+    /// # Arguments:
+    /// * mapfn: `FnOnce(Ret)->R`
+    /// * `Ret` - the result type of task body 
+    /// * `R` - is final output, must be two layer tuple. `((..),(..),..)`
+    /// 
+    /// # Returns:
+    /// * format is a tuple, each elemtn is a tuple too
+    /// * each element stands for an output
+    /// ```rust
+    /// (
+    ///   value, /// the output of this branch  
+    ///   Anchor(taskid, cond#i) /// the target anchor the value will be passed to.  
+    /// )
+    /// ```
+    /// 
+    /// * the whole structure of output is:
+    /// ```rust
+    ///  (  
+    ///     (value1,Anchor(task1,cond#i)), /// the 1st branch  
+    ///     (value2,Anchor(task2,cond#i)), /// the 2st branch  
+    ///     ...  
+    ///  )
+    /// ```
     pub fn fan_tuple_with<MapFn,R>(self, mapfn:MapFn) -> TaskBuild<Currier, MapFn,R>
         where MapFn: Fndecl<(Currier::R,),R>
     {
@@ -169,11 +216,38 @@ pub trait TaskBuildOp<Currier,R> {}
 
 /// A builder trait for constructing tasks with an optional task ID.
 pub trait TaskBuildNew<C,F,R> {
-    /// construct a task.
+    /// construct a task from a function or a closure or with an taskid.
+    /// 
+    /// # Example:
+    /// ```rust
+    /// 
+    /// // no return
+    /// let task = (||{}).into_task(); // just a function
+    /// let task = (||{},1).into_task(); // function and an explicit taskid
+    /// let task = (|_:i32|{}).into_task(); // task with one cond
+    /// let task = (|_:i32|{},2).into_task(); // task with one cond and explicit taskid
+
+    /// // with return
+    /// let task = (||3).into_task(); // just a function
+    /// let task = (||3,1).into_task(); // function and an explicit taskid
+    /// let task = (|_:i32|3).into_task(); // task with one cond
+    /// let task = (|_:i32|3,2).into_task(); // task with one cond and explicit taskid
+    /// ```
+    /// 
+    /// # Arguments:
+    /// * (fun,taskid:usize)
+    /// * fun : a function or a closure with param count less equal 8
+    /// * taskid: `usize`, you can also input the id explicitly
+    /// 
+    /// A `taskid` is required when the function has parameters, because other tasks
+    /// need to know the location `Anchor(taskid, cond#i)` to which they pass conditions.
+    /// If the task has no parameters, the `taskid` is not required.
+    /// However, if you omit it, the system will automatically generate a `taskid`.
+    /// 
     /// # Returns
-    /// A tuple containing:
-    /// - The `Task Currier` (`TC`)
-    /// - An optional task ID (`usize`), if `None`, an ID auto-generated when needed
+    /// 
+    /// - TaskBuild: including the necessaary info of a task, 
+    ///   just for preparetion of submition.
     fn into_task(self)->TaskBuild<C,F,R>;
 
     #[deprecated(
@@ -262,7 +336,7 @@ pub trait TaskBuildNew<C,F,R> {
 fn test_task_build_many() {
     let task = (||3).into_task();
     if true {
-        task.fan_tuple_with(|_r: i32| {
+        task.fan_tuple_with(|_:i32| {
             ((3, Anchor(0, 0)),)
         });
     } else {

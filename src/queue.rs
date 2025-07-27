@@ -78,6 +78,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
             let mut m = queue.0.lock().unwrap();
             if let Some((task,postdo)) = m.pop_front() {
                 drop(m);
+                // debug!("task#{} is scheduled to run.",task.id());
                 let kind = task.kind();
                 let r = task.run();
                 if let Some(r) = r {
