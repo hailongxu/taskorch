@@ -17,13 +17,14 @@ mod submitter;
 use queue::C1map;
 pub use queue::{spawn_thread, Queue};
 pub use task::{
-    Anchor,Kind,
+    CondAddr,Pi,
+    Kind,
     TaskBuild,
     TaskBuildNew,TaskBuildOp,
     taskid_next,
 };
 
-pub use crate::submitter::TaskSubmitter;
+pub use submitter::{TaskSubmitter,TaskError};
 
 
 /// a handle to a thread spawned for queue

@@ -1,5 +1,5 @@
 
-use taskorch::{Anchor, Pool, Queue, TaskBuildNew, TaskSubmitter};
+use taskorch::{Pi, Pool, Queue, TaskBuildNew, TaskSubmitter};
 
 // Thread 1: Task execution (consumer) role
 // Thread 2: Task generation (producer) role
@@ -33,26 +33,31 @@ fn consume_task_prompt(submitter:&TaskSubmitter) {
 
 fn produce_task(submitter:TaskSubmitter) {
     prompt("hello");
-    submitter.submit((||println!("consmue task='hello': helle every!")).into_task());
+    submitter.submit((||println!("consmue task='hello': helle everyone!")).into_task());
 
     prompt("exit");
-    let id_exit = submitter.submit((|a:i32|println!("consume task='exit': recv cond={a} and exit.")).into_exit_task());
+    let id_exit = submitter.submit((|a:i32|println!("consume task='exit': recv cond={a} and exit.")).into_exit_task())
+        .unwrap().unwrap();
 
     prompt("add");
-    let id_add = submitter.submit((
-        |a:i32,b:i32|{
+    let id_add = submitter.submit(
+        (|a:i32,b:i32|{
             println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
             a+b
-        }).into_task().to(id_exit,0));
+        }).into_task().to((id_exit,Pi::PI0).into())
+    ).unwrap().unwrap();
 
     prompt("params");
-    let _ = submitter.submit((
-        ||{println!("consume task='params': pass (1, 2) to task='add'");}
-    ).into_task().fan_tuple_with(move|_:()|(
-        (1, Anchor(id_add, 0)), // to add.cond#0
-        (2, Anchor(id_add, 1)), // to add.cond#1
-        // (2, Anchor(id_add, 1)), /// to add.cond#1, Error, if use '///' !!!!!
-    )));
+    let _ = submitter.submit(
+        (||{println!("consume task='params': pass (1, 2) to task='add'");1},10.into())
+        .into_task()
+        .fan_tuple_with(move|_:i32|
+            (
+                (1, (id_add, Pi::PI0).into()), // to add.cond#0
+                (2, (id_add, Pi::PI1).into()), // to add.cond#1
+                // (2, Anchor(id_add, 1)), /// to add.cond#1, Error, if use '///' !!!!!
+            )
+        ));
 }
 
 fn prompt(taskname:&'static str) {

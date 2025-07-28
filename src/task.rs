@@ -2,7 +2,8 @@
 use std::{
     any::Any,
     marker::PhantomData,
-    sync::atomic::{AtomicUsize, Ordering}
+    sync::atomic::{AtomicUsize, Ordering},
+    ops::{Deref,DerefMut},
 };
 
 use crate::{curry::{CallOnce, CallParam, Currier}, meta::TupleOpt};
@@ -30,61 +31,157 @@ impl TaskIdGen {
             nexter: AtomicUsize::new(0)
         }
     }
-    fn next(&self)->usize {
-        self.nexter.fetch_add(1, Ordering::Relaxed)
+    fn next(&self)->TaskId {
+        TaskId::from(
+            self.nexter.fetch_add(1, Ordering::Relaxed)
+        )
     }
 }
 
 /// Generate a task ID
-pub fn taskid_next()->usize {
+/// * returns
+/// * type `TaskId`
+pub fn taskid_next()->TaskId {
     TASKID.next()
 }
+
+/// Task IDs
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct TaskId(pub(crate) usize);
+
+impl TaskId {
+    pub const fn as_usize(&self)->usize {
+        self.0
+    }
+}
+
+impl From<usize> for TaskId {
+    fn from(id: usize) -> Self {
+        Self(id)
+    }
+}
+
+impl Deref for TaskId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for TaskId {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+// just for debug message
+#[repr(transparent)]
+pub(crate) struct TaskIdOption(pub(crate) Option<TaskId>);
+
+impl std::fmt::Debug for TaskIdOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(taskid) = self.0 {
+            f.write_fmt(format_args!("TaskId({})",taskid.0))
+            // f.debug_tuple("TaskId").field(&v).finish()
+        } else {
+            f.write_fmt(format_args!("TaskId(None)"))
+            // f.debug_tuple("TaskId").field(&v).finish()
+        }
+    }
+}
+
+#[test]
+fn test_tid() {
+    let tid = TaskId::from(3);
+    let tid: TaskId = 3.into();
+    let tid = TaskIdOption(Some(tid));
+    println!("{tid:?}");
+    let tid = TaskIdOption(None);
+    println!("{tid:?}");
+}
+
+/// Param index (0-based)
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct Pi(pub(crate) u8);
+impl Pi {
+    pub const PI0:Pi = Pi(0);
+    pub const PI1:Pi = Pi(1);
+    pub const PI2:Pi = Pi(2);
+    pub const PI3:Pi = Pi(3);
+    pub const PI4:Pi = Pi(4);
+    pub const PI5:Pi = Pi(5);
+    pub const PI6:Pi = Pi(6);
+    pub const PI7:Pi = Pi(7);
+    pub const PI8:Pi = Pi(8);
+}
+impl Pi {
+    const fn i(&self)->u8 {
+        self.0
+    }
+}
+impl From<u8> for Pi {
+    #[inline]
+    fn from(pi: u8) -> Self {
+        Self(pi)
+    }
+}
+impl From<Pi> for u8 {
+    #[inline]
+    fn from(pi: Pi) -> Self {
+        pi.0
+    }
+}
+
+/// Cond Addr
+/// Represents the position where a condition occurs — specifically, the position of a parameter.
+///
+/// This is determined by a combination of the task ID and zero-based condition index,
+/// which together uniquely identify where the parameter is located in the system.
+pub struct CondAddr(TaskId,Pi);
+
+impl CondAddr {
+    #[inline]
+    pub const fn taskid(&self)->TaskId {
+        self.0
+    }
+    #[inline]
+    pub const fn pi(&self)->Pi {
+        self.1
+    }
+    #[inline]
+    pub fn set(&mut self, id:TaskId, i:Pi) {
+        self.0 = id;
+        self.1 = i;
+    }
+}
+
+impl From<(TaskId,Pi)> for CondAddr {
+    fn from((tid,pi): (TaskId,Pi)) -> Self {
+        Self(tid, pi)
+    }
+}
+
 
 pub(crate) trait Task
 {
     fn run(self:Box<Self>)->Option<Box<dyn Any>>;
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
     fn kind(&self)->Kind;
+    fn id(&self)->Option<TaskId>;
 }
 
-/// Represents the position where a condition occurs — specifically, the position of a parameter.
-///
-/// This is determined by a combination of the task ID and zero-based condition index,
-/// which together uniquely identify where the parameter is located in the system.
-#[derive(Clone,Copy,Debug)]
-pub struct Anchor(
-    /// The task ID associated with the condition.
-    pub usize,
-    /// The zero-based index of the parameter within the task's parameter list.
-    pub usize,
-);
-
-impl Anchor {
-    #[inline]
-    pub const fn id(&self)->usize {
-        self.0
-    }
-    #[inline]
-    pub const fn i(&self)->usize {
-        self.1
-    }
-    #[inline]
-    pub fn set(&mut self, id:usize, i:usize) {
-        self.0 = id;
-        self.1 = i;
-    }
-}
 
 /// The carrier of the task, used to create and invoke its functionality.
 pub(crate) struct TaskCurrier<Currier> {
     pub(crate) currier: Currier,
-    pub(crate) id: Option<usize>,
+    pub(crate) id: Option<TaskId>,
     pub(crate) kind: Kind,
 }
 
 pub(crate) enum TaskMap<MapFn,R> {
     None,
-    To(Anchor),
+    To(CondAddr),
     ToMany(MapFn,PhantomData<R>),
 }
 
@@ -107,13 +204,16 @@ impl<T> Task for TaskCurrier<T>
     fn kind(&self)->Kind {
         self.kind
     }
+    fn id(&self)->Option<TaskId> {
+        self.id
+    }
 }
 
 pub struct TaskBuild<C,MapFn,MapR>(pub(crate) TaskCurrier<C>,pub(crate) TaskMap<MapFn,MapR>);
 
 impl<C,MapFn,MapR> TaskBuild<C,MapFn,MapR> {
     /// get task id from task, only if the task has conds.
-    pub fn id(&self)->Option<usize> {
+    pub fn id(&self)->Option<TaskId> {
         self.0.id
     }
 }
@@ -134,14 +234,15 @@ impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
     /// # Arguments:
     /// * `taskid` - target task identifier
     /// * `i` - cond #index (0-based)
-    pub fn to(self, taskid:usize, i:usize) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
+    // pub fn old_to(self, taskid:usize, i:usize) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
+    pub fn to(self, ca:CondAddr) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
         TaskBuild (
             TaskCurrier {
                 currier: self.0.currier,
                 id: self.0.id,
                 kind: self.0.kind,
             },
-            TaskMap::To(Anchor(taskid, i))
+            TaskMap::To(ca)
         )
     }
 }
@@ -337,10 +438,10 @@ fn test_task_build_many() {
     let task = (||3).into_task();
     if true {
         task.fan_tuple_with(|_:i32| {
-            ((3, Anchor(0, 0)),)
+            ((3, CondAddr(TaskId::from(1), Pi(0))),)
         });
     } else {
-        task.to(3,0);
+        task.to(CondAddr(TaskId::from(3),Pi(0)));
     }
 }
 
@@ -376,7 +477,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for F {
         )
     }
 }
-impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for (F,usize) {
+impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for (F,TaskId) {
     fn into_task(self) -> TaskBuild<Currier<F,(),R>,NullMapFn<R>,()> {
         TaskBuild(
             TaskCurrier {
@@ -421,7 +522,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for 
         )
     }
 }
-impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for (F,usize) {
+impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for (F,TaskId) {
     fn into_task(self) -> TaskBuild<Currier<F,(P1,),R>,NullMapFn<R>,()> {
         TaskBuild (
             TaskCurrier {
@@ -471,7 +572,7 @@ macro_rules! impl_task_build_new {
         }
 
 
-        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> for (F, usize) {
+        impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> for (F, TaskId) {
             fn into_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, NullMapFn<R>,()> {
                 TaskBuild (
                     TaskCurrier {

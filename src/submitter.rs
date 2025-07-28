@@ -2,12 +2,22 @@ use crate::{
     curry::CallOnce,
     meta::{Fndecl, Identical},
     queue::{when_ci_comed, C1map, WhenTupleComed},
-    task::{Task, TaskBuild, TaskCurrier, TaskMap},
+    task::{
+        Task, TaskBuild, TaskCurrier, TaskMap, 
+        TaskId, TaskIdOption, taskid_next
+    },
     Queue,
     log::{Level,LEVEL},
 };
 
 use std::{any::{Any, TypeId}, fmt::Debug};
+
+#[derive(Debug)]
+pub enum TaskError {
+    /// when submit task, if the id has already existed in waitQueue.
+    TaskIdAlreadyExists(TaskId),
+}
+type SummitResult = Result<Option<TaskId>,TaskError>;
 
 /// Handles task submission to a specific queue
 #[derive(Clone)]
@@ -28,8 +38,10 @@ impl TaskSubmitter {
     /// 
     /// # returns
     /// * `usize` - The ID of the task
+    /// 
+    /// * if taskid has already existed, return None
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->usize
+    pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->SummitResult
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -40,67 +52,92 @@ impl TaskSubmitter {
         MapR: Send + 'static,
         MapFn::R: WhenTupleComed,
     {
-        let c1map = self.c1map.clone();
-        let c1queue = (self.qid,self.queue.clone());
-        let postdo = move |r: Box<dyn Any>| {
-            match map {
-                TaskMap::None => return,
-                // to single anchor
-                TaskMap::To(to) => {
-                    let _actual_type = r.type_id();
-                    let Ok(r) = r.downcast::<C::R>() else {
-                        let _expected_type = TypeId::of::<C::R>();
-                        let _expected_type_name = std::any::type_name::<C::R>();
-                        error!(
-                            "task return value downcast failed: expected {}, got {:?}",
-                            _expected_type_name, _actual_type
-                        );
-                        panic!("failed to conver to R type");
-                        // return;
-                    };
-                    let r: &C::R = &*r;
-                    when_ci_comed(&to, r, c1map, c1queue);
-                },
-                // to multi-anchor
-                TaskMap::ToMany(mapfn, _) => {
-                    let _actual_type = r.type_id();
-                    let Ok(r) = r.downcast::<C::R>() else {
-                        let _expected_type = TypeId::of::<C::R>();
-                        let _expected_type_name = std::any::type_name::<C::R>();
-                        error!(
-                            "task return value downcast failed: expected {}, got {:?}",
-                            _expected_type_name, _actual_type
-                        );
-                        panic!("failed to conver to R type");
-                        // return;
-                    };
-                    let r: C::R = *r;
-                    // dispatch to multi-target
-                    let rtuple = mapfn.call((r,).into());
-                    rtuple.foreach(c1map, c1queue);
+        let mk_postdo = |id:Option<TaskId>| {
+            let c1map = self.c1map.clone();
+            let c1queue = (self.qid,self.queue.clone());
+            let postdo = move |r: Box<dyn Any>| {
+                let r_id = id;
+                match map {
+                    TaskMap::None => return,
+                    // to single anchor
+                    TaskMap::To(to) => {
+                        let _actual_type = r.type_id();
+                        let Ok(r) = r.downcast::<C::R>() else {
+                            let _expected_type = TypeId::of::<C::R>();
+                            let _expected_type_name = std::any::type_name::<C::R>();
+                            error!(
+                                "task return value downcast failed: expected {}, got {:?}",
+                                _expected_type_name, _actual_type
+                            );
+                            panic!("failed to conver to R type");
+                            // return;
+                        };
+                        let r: &C::R = &*r;
+                        when_ci_comed(&to, (r_id,r), c1map, c1queue);
+                    },
+                    // to multi-anchor
+                    TaskMap::ToMany(mapfn, _) => {
+                        let _actual_type = r.type_id();
+                        let Ok(r) = r.downcast::<C::R>() else {
+                            let _expected_type = TypeId::of::<C::R>();
+                            let _expected_type_name = std::any::type_name::<C::R>();
+                            error!(
+                                "task return value downcast failed: expected {}, got {:?}",
+                                _expected_type_name, _actual_type
+                            );
+                            panic!("failed to conver to R type");
+                            // return;
+                        };
+                        let r: C::R = *r;
+                        // dispatch to multi-target
+                        let rtuple = mapfn.call((r,).into());
+                        rtuple.foreach(r_id, c1map, c1queue);
+                    }
                 }
-            }
+            };
+            postdo
         };
 
         //
         // postdo maybe added another param of taskid indicating where the value comes from.
-        let postdo = Box::new(postdo);
+        // let postdo = Box::new(postdo);
 
+        // without parameter
         if 0 == task.currier.count() {
             if LEVEL >= Level::Warn {
                 if let Some(_id) = task.id {
-                    warn!("Ignore the taskid {_id}: no conditions found for this task.");
+                    warn!("Ignore the taskid {_id:?}: no conditions found for this task.");
                 }
             }
-            let task = Box::new(task);
-            self.queue.add_boxtask(task,postdo);
-            debug!("task#{} added into Q#{}", usize::MAX, self.qid);
-            usize::MAX
-        } else {
+            // if id is set we will check whether it is conflicted in map queue.
+            if let Some(id) = task.id {
+                if self.c1map.check(id).is_some() {
+                    error!("task#{:?} has existed in queue!!",task.id);
+                    return Err(TaskError::TaskIdAlreadyExists(id))
+                }
+            }
+
             let taskid = task.id;
-            let id = self.c1map.insert(task, postdo, taskid).unwrap();
-            debug!("cond task#{id} added into waitQueue");
-            id
+            let task = Box::new(task);
+            let postdo = Box::new(mk_postdo(taskid));
+            self.queue.add_boxtask(task,postdo);
+            debug!("task#{:?} added into Q#{}", TaskIdOption(taskid), self.qid);
+            Ok(taskid)
+        } else { // with parameters
+            let mut task = task;
+            if task.id.is_none() { task.id = Some(taskid_next()); }
+            let task = task;
+            let taskid = task.id.unwrap(); // task.id must be some
+            let postdo = Box::new(mk_postdo(task.id));
+            let id = self.c1map.try_insert(task, postdo, taskid);
+            if id.is_some() {
+                debug_assert_eq!(Some(taskid),id);
+                debug!("cond-task#{taskid:?} added into waitQueue");
+                Ok(id)
+            } else {
+                error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
+                Err(TaskError::TaskIdAlreadyExists(taskid))
+            }
         }
     }
 }
