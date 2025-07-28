@@ -16,20 +16,19 @@ Tasks can be executed in **two distinct modes**:
 - **Independent**: Runs freely without constraint.
 - **Conditional**: Executes only when all conditions are satisfied.
 
+### task components
+The task consists of two main parts:
+1. **task body**, Correspond to the INNER task. The core logic of the task, responsible for execution and producing a result.
+2. **result distribution**, Correspond to INTER task. determine how the result is passed to other CondAddrs
+
 ### Task **<u>Inner</u>** Flow
 1. **Activation**: A task is scheduled once all its required conditions are fulfilled.
 2. **Execution**: The task runs and computes its return value.
-3. **Data Passing**: If a `target anchor` is configured, the return value will be passed on to another task.  
+3. **Data Passing**: If a `target condaddr` is configured, the return value will be passed on to another task.  
 see [Task creations code](#task-creation-code)
 
 **Key Notes**:  
 - **Conditions** correspond to the function’s parameters (0-indexed).
-
-
-### task components
-The task consists of two main parts:
-1. **task body**, The core logic of the task, responsible for execution and producing a result.
-2. **result distribution**, determine how the result is passed to other Anchors
 
 ### Task **<u>Inter</u>** Flow
 #### 1. N --> 1
@@ -58,14 +57,14 @@ Optional features can be enabled based on your needs (see [Available Features](#
 ### Building a Task (2-Step Process)
 2. **Create**:  Create the task from function or closure chained by `.into_task()`.
 3. **Notify (Optional)**:  
-    Forward task's result by calling `to()` to set a `target anchor`.  
-    Or forward task's result by calling `fan_tuple_with()` to multi `target anchor`.   
+    Forward task's result by calling `to()` to set a `target condaddr`.  
+    Or forward task's result by calling `fan_tuple_with()` to multi `target condaddr`.   
    *This step can be skipped if the task does not produce any output.*
 
 ## Task Creation Code
 #### Note
 NO `parameter`, NO `taskid` needed.  
-NO `return`, NO `target anchor` required.  
+NO `return`, NO `target condaddr` required.  
 
 ### Create a task body with `.into_task()`
 Any function or closure by calling `.into_task()` will complete constructing a task;
@@ -95,8 +94,8 @@ let task1 = (|_:i16|{3}, 1).into_task(); // task#1 with cond#0
 let task2 = (|_:i32|{3}, 2).into_task(); // task#2 with cond#0
 let task  = (||(2i16,3i32)).into_task()  // task return type (#0 i16, #1 i32)
             .fan_tuple_with(|(a,b):(i16,i32)|( // input parameter is the return type
-                (a,Anchor(1,0)), // a --> task#1.cond#0
-                (b,Anchor(2,0)), // b --> task#2.cond#0
+                (a,CondAddr(1,0)), // a --> task#1.cond#0
+                (b,CondAddr(2,0)), // b --> task#2.cond#0
             ));
 ```
 
@@ -125,7 +124,7 @@ As this project is currently in early active development, the API is **highly un
 
 ## Example
 ```rust
-use taskorch::{Anchor, Pool, Queue, TaskBuildNew};
+use taskorch::{CondAddr, Pool, Queue, TaskBuildNew};
 //  A       => [B1, B2] ## 1->N
 // [B1, B2] =>  Exit    ## N->1
 fn main() {
@@ -165,7 +164,7 @@ fn main() {
     // 1->N : map result to task-b1 and task-b2
     submitter.submit((||3).into_task().fan_tuple_with(move|a: i32|{
         println!("task 'A': fan to 'B1' 'B2'");
-        ((a,Anchor(id_b1,0)),("exit",Anchor(id_b2,0)))
+        ((a,CondAddr(id_b1,0)),("exit",CondAddr(id_b2,0)))
     }));
 
     // Step#4. start a thread and run

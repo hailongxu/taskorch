@@ -12,12 +12,12 @@ mod log;
 mod meta;
 mod curry;
 mod queue;
-mod task;
+pub mod task;
 mod submitter;
 use queue::C1map;
 pub use queue::{spawn_thread, Queue};
 pub use task::{
-    CondAddr,Pi,
+    CondAddr,TaskId,Pi,
     Kind,
     TaskBuild,
     TaskBuildNew,TaskBuildOp,

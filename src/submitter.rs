@@ -4,7 +4,7 @@ use crate::{
     queue::{when_ci_comed, C1map, WhenTupleComed},
     task::{
         Task, TaskBuild, TaskCurrier, TaskMap, 
-        TaskId, TaskIdOption, taskid_next
+        TaskId, taskid_next
     },
     Queue,
     log::{Level,LEVEL},
@@ -31,15 +31,40 @@ pub struct TaskSubmitter {
 impl TaskSubmitter {
     /// Enqueues a new task for future scheduling
     ///
+    /// # Examples:
+    /// ```
+    /// let task = (|a:i32|3,10).into_task(); // with explicit taskid=10
+    /// let task = submitter.submit(task.into_task()); 
+    /// assert_eq!(task,Ok(Some(TaskId::from(10))));
+    /// 
+    /// 
+    /// let task = (||3).into_task();
+    /// let task = submitter.submit(task.into_task()); 
+    /// assert_eq!(task,Ok(None));
+    /// 
+    /// let task = (||3,1).into_task(); // with explicit taskid=1
+    /// let task = submitter.submit(task.into_task()); 
+    /// assert_eq!(task,Ok(Some(TaskId::from(1))));
+    /// 
+    /// // error, because 10 is used above.
+    /// let task = (||3,10).into_task(); // with explicit taskid=10
+    /// let task = submitter.submit(task.into_task()); 
+    /// assert_eq!(task,Error(err_msg)));
+    /// 
+    /// ```
     /// # argments
     /// * `TaskBuild` - generate from `.into_task()` 
     /// * `task` - The main body of the task to be executed. 
     /// * `map` - Mapping function for processing and forwarding the task result
     /// 
     /// # returns
-    /// * `usize` - The ID of the task
+    /// * `Result<Option<TaskId>,String>` - The ID of the task
     /// 
-    /// * if taskid has already existed, return None
+    /// * if taskid has already existed, return Error
+    /// * if the task has no params and you donot fill an explicit taskid, 
+    /// * here, return Ok(None)
+    /// * or else return Ok(Some(TaskId))
+    /// 
     #[allow(private_bounds)]
     pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->SummitResult
         where
@@ -59,7 +84,7 @@ impl TaskSubmitter {
                 let r_id = id;
                 match map {
                     TaskMap::None => return,
-                    // to single anchor
+                    // to single condaddr
                     TaskMap::To(to) => {
                         let _actual_type = r.type_id();
                         let Ok(r) = r.downcast::<C::R>() else {
@@ -75,7 +100,7 @@ impl TaskSubmitter {
                         let r: &C::R = &*r;
                         when_ci_comed(&to, (r_id,r), c1map, c1queue);
                     },
-                    // to multi-anchor
+                    // to multi-condaddr
                     TaskMap::ToMany(mapfn, _) => {
                         let _actual_type = r.type_id();
                         let Ok(r) = r.downcast::<C::R>() else {
@@ -121,7 +146,7 @@ impl TaskSubmitter {
             let task = Box::new(task);
             let postdo = Box::new(mk_postdo(taskid));
             self.queue.add_boxtask(task,postdo);
-            debug!("task#{:?} added into Q#{}", TaskIdOption(taskid), self.qid);
+            debug!("task#{:?} added into Q#{}", crate::task::TaskIdOption(taskid), self.qid);
             Ok(taskid)
         } else { // with parameters
             let mut task = task;

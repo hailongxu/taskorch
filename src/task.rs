@@ -1,3 +1,13 @@
+//! ## task module
+//! 
+//! Core scheduling concepts:
+//! 
+//! <1> CondAddr: Logical address to locate a condition (not a memory address)
+//! 
+//! <2> TaskId: Unique identifier for a task
+//! 
+//! <3> Pi: Zero-based index of a task parameter (also used as condition i
+//! 
 
 use std::{
     any::Any,
@@ -8,6 +18,7 @@ use std::{
 
 use crate::{curry::{CallOnce, CallParam, Currier}, meta::TupleOpt};
 use crate::meta::Fndecl;
+
 
 /// Defines the behavior type for tasks.
 #[derive(Clone,Copy)]
@@ -45,7 +56,15 @@ pub fn taskid_next()->TaskId {
     TASKID.next()
 }
 
-/// Task IDs
+
+/// TaskId
+/// the unique id of a pool instance system
+/// 
+/// # Example:
+/// ```
+/// let taskid = TaskId::from(3);
+/// let taskid = 3.into();
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct TaskId(pub(crate) usize);
@@ -74,7 +93,8 @@ impl DerefMut for TaskId {
     }
 }
 
-// just for debug message
+/// just for debug message
+#[doc(hidden)]
 #[repr(transparent)]
 pub(crate) struct TaskIdOption(pub(crate) Option<TaskId>);
 
@@ -100,7 +120,18 @@ fn test_tid() {
     println!("{tid:?}");
 }
 
-/// Param index (0-based)
+/// A 0-based index of representing the position of a parameter in fun or closure signature.
+/// 
+/// # Examples:
+/// ```rust
+/// fn ff(a:i32,b:i16,c:char) {}
+/// 
+/// let pi = Pi::P0; // the index postion of 1st `a:i32` (index 0)
+/// let pi = Pi::P1; // the index postion of 2nd `b:i16` (index 1)
+/// let pi = Pi::P2; // the index postion of 3rd `c:char` (index 2)
+/// let pi = Pi::from(2); // equivalent Pi::P2
+/// let pi = 2.into(); // equivalent Pi::P2
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct Pi(pub(crate) u8);
@@ -230,7 +261,7 @@ impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
 
 impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
 {
-    /// Configures the target anchor to `(taskid, condid)`.
+    /// Configures the target condaddr to `(taskid, condid)`.
     /// # Arguments:
     /// * `taskid` - target task identifier
     /// * `i` - cond #index (0-based)
@@ -249,7 +280,7 @@ impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
 
 impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
 {
-    /// Distribute the result of bady task to multi anchors.
+    /// Distribute the result of bady task to multi condaddrs.
     /// 
     /// # Example:
     /// 
@@ -265,8 +296,8 @@ impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
     /// 
     /// // the type of input must be identical to return type of task body.
     /// task.fan_tuple_with(|_:i32|( 
-    ///     (8i16,    Anchor(1,0)), // the 1st branch output
-    ///     ("apple", Anchor(2,0)), // the 2nd branch output
+    ///     (8i16,    CondAddr(1,0)), // the 1st branch output
+    ///     ("apple", CondAddr(2,0)), // the 2nd branch output
     ///     ));
     /// ```
     /// 
@@ -281,15 +312,15 @@ impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
     /// ```rust
     /// (
     ///   value, /// the output of this branch  
-    ///   Anchor(taskid, cond#i) /// the target anchor the value will be passed to.  
+    ///   CondAddr(taskid, cond#i) /// the target condaddr the value will be passed to.  
     /// )
     /// ```
     /// 
     /// * the whole structure of output is:
     /// ```rust
     ///  (  
-    ///     (value1,Anchor(task1,cond#i)), /// the 1st branch  
-    ///     (value2,Anchor(task2,cond#i)), /// the 2st branch  
+    ///     (value1,CondAddr(task1,cond#i)), /// the 1st branch  
+    ///     (value2,CondAddr(task2,cond#i)), /// the 2st branch  
     ///     ...  
     ///  )
     /// ```
@@ -307,7 +338,7 @@ impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>
     }
 }
 
-/// TaskBuildOp provides target anchor configuration.
+/// TaskBuildOp provides target condaddr configuration.
 #[deprecated(
     since="0.3.0",
     note = "Use `to()` directly, for this method has been integrated into the TaskBuild. \
@@ -341,7 +372,7 @@ pub trait TaskBuildNew<C,F,R> {
     /// * taskid: `usize`, you can also input the id explicitly
     /// 
     /// A `taskid` is required when the function has parameters, because other tasks
-    /// need to know the location `Anchor(taskid, cond#i)` to which they pass conditions.
+    /// need to know the location `CondAddr(taskid, cond#i)` to which they pass conditions.
     /// If the task has no parameters, the `taskid` is not required.
     /// However, if you omit it, the system will automatically generate a `taskid`.
     /// 
@@ -375,9 +406,9 @@ pub trait TaskBuildNew<C,F,R> {
         self.into_exit_task()
     }
 }
-/// TaskBuildOp provides target anchor configuration.
+/// TaskBuildOp provides target condaddr configuration.
 // pub trait TaskBuildOp<Currier,R> {
-//     /// Configures the target anchor to `(taskid, condid)`.
+//     /// Configures the target condaddr to `(taskid, condid)`.
 //     /// # Arguments:
 //     /// * `taskid` - target task identifier
 //     /// * `i` - cond #index (0-based)
@@ -410,7 +441,7 @@ pub trait TaskBuildNew<C,F,R> {
 //                 id: self.0.id,
 //                 kind: self.0.kind,
 //             },
-//             TaskMap::To(Anchor(taskid, i))
+//             TaskMap::To(CondAddr(taskid, i))
 //         )
 //     }
 // }
@@ -445,6 +476,7 @@ fn test_task_build_many() {
     }
 }
 
+#[doc(hidden)]
 pub struct NullMapFn<P> {
     phantom: PhantomData<P>
 }
