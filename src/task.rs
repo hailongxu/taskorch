@@ -311,6 +311,20 @@ impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
             TaskMap::To(ca)
         )
     }
+
+    #[deprecated(
+        since="0.3.0",
+        note = "Use `to()` instead for strict type check. \
+               `old_to()` will be removed in next release."
+    )]
+    pub fn old_to(self, to: usize, pi: usize) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
+        warn!("Use .to() instead, the .old_to() will be removed in next version.");
+        debug_assert!(pi <= u8::MAX as usize);
+        if pi > u8::MAX as usize {
+            error!("The index of cond#{pi} is too large, shoul be <= {}.",u8::MAX);
+        }
+        self.to(CondAddr(TaskId::from(to), Pi::from(pi as u8)))
+    }
 }
 
 impl<Currier:CallOnce,MapFn1,R1> TaskBuild<Currier, MapFn1,R1>

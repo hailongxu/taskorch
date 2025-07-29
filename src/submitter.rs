@@ -168,6 +168,26 @@ impl TaskSubmitter {
             }
         }
     }
+    #[deprecated(
+        since="0.3.0",
+        note = "Use `submit()` instead for strict type check. \
+               `old_submit()` will be removed in next release."
+    )]
+
+    #[allow(private_bounds)]
+    pub fn old_submit<C,MapFn,MapR>(&self,taskbuild:TaskBuild<C,MapFn,MapR>)->TaskId
+        where
+        TaskCurrier<C>: Task,
+        C: CallOnce + Send + 'static,
+        C::R: 'static + Debug,
+        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
+        MapR: Send + 'static,
+        MapFn::R: WhenTupleComed,
+    {
+        self.submit(taskbuild).unwrap()
+    }
 }
 
 #[test]
