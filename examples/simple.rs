@@ -21,19 +21,19 @@ fn main() {
         (|a:i32,msg:&str|
             println!("task='exit': received ({a},{msg:?}) and EXIT")
         ).into_exit_task()
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // N->1 : pass i32 to exit-task.p0
     let id_b1 = submitter.submit(
         (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
         .into_task().to(((id_exit, Pi::PI0)).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // N->1 : pass str to exit task.p1
     let id_b2 = submitter.submit(
         (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
         .into_task().to((id_exit, Pi::PI1).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // 1->N : map result to task-b1 and task-b2
     let _ = submitter.submit((||3).into_task().fan_tuple_with(move|a: i32|{

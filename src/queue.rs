@@ -1,15 +1,15 @@
 use std::{
-    any::{type_name, Any},
-    collections::{HashMap, VecDeque},
-    fmt::Debug,
-    sync::{
+    any::{type_name, Any}, collections::{HashMap, VecDeque}, fmt::Debug, num::NonZeroUsize, sync::{
         atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex
-    },
-    thread
+    }, thread
 };
 
-use crate::{task::{Task, Kind, CondAddr, TaskId, TaskIdOption}, Jhandle};
+use crate::{task::{CondAddr, Kind, Task, TaskId}, Jhandle};
 
+// enum InsertError {
+//     /// task is must not be null
+//     TaskIdIsNull,
+// }
 
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
 // static  WHEN_NIL_COMED: Box<PostDo> = Box::new(|_|());
@@ -77,7 +77,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
             let mut m = queue.0.lock().unwrap();
             if let Some((task,postdo)) = m.pop_front() {
                 drop(m);
-                debug!("task#{:?} is scheduled to run.",TaskIdOption(task.id()));
+                debug!("task#{:?} is scheduled to run.",task.id());
                 let kind = task.kind();
                 let r = task.run();
                 if let Some(r) = r {
@@ -97,7 +97,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
 }
 
 #[derive(Clone)]
-pub(crate) struct C1map(Arc<(Mutex<HashMap<usize,(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
+pub(crate) struct C1map(Arc<(Mutex<HashMap<NonZeroUsize,(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
 
 impl C1map {
     pub(crate) fn new()->Self {
@@ -106,14 +106,18 @@ impl C1map {
         )
     }
     pub(crate) fn check(&self, tid:TaskId)->Option<TaskId> {
+        let TaskId(Some(ref taskid)) = tid else {
+            return None;
+        };
+
         let lock = self.0.0.lock().unwrap();
-        if lock.contains_key(&tid.0) {
+        if lock.contains_key(taskid) {
             Some(tid)
         } else {
             None
         }
     }
-    pub(crate) fn try_insert<T>(&self,task: T,postdo:Box<PostDo>,TaskId(taskid):TaskId)->Option<TaskId>
+    pub(crate) fn try_insert<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->Option<NonZeroUsize>
     where T: Task + Send + 'static
     {
         let task: Box::<dyn Task + Send + 'static> = Box::new(task);
@@ -125,38 +129,45 @@ impl C1map {
             Vacant(vacant_entry)
                 => {
                 vacant_entry.insert((task,postdo));
-                Some(TaskId(taskid))
+                Some(taskid)
             },
         }
     }
-    fn remove(&self,id:usize)->Option<(Box<dyn Task+Send>,Box<PostDo>)> {
+    fn remove(&self,id:&NonZeroUsize)->Option<(Box<dyn Task+Send>,Box<PostDo>)> {
         let mut lock = self.0.0.lock().unwrap();
-        lock.remove(&id)
+        lock.remove(id)
     }
 
-    fn update_ci<T:'static+Debug>(&self,anchor:&CondAddr,v:&T)->Option<bool> {
+    // Some(true): full
+    // Some(false): not full
+    // None: error
+    fn update_ci<T:'static+Debug>(&self,target_ca:&CondAddr,(v,v_from):(&T,&TaskId))->Option<bool> {
+        let TaskId(Some(ref target_taskid)) = target_ca.taskid() else {
+            error!("task#{:?} is ZERO, not avaiable!", target_ca.taskid());
+            return None;
+        };
         let mut lock = self.0.0.lock().unwrap();
-        let Some((task,_postdo)) = lock.get_mut(&anchor.taskid().0) else {
-            error!("task#{:?} was not found, the cond#{:?} could not be updated", anchor.taskid(), anchor.pi());
+        let Some((target_task,_target_postdo)) = lock.get_mut(target_taskid) else {
+            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.pi());
             return None;
         };
-        let Some(param) = task.as_param_mut() else {
-            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", anchor.taskid(), anchor.pi());
+        let Some(param) = target_task.as_param_mut() else {
+            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.pi());
             return None;
         };
-        if !param.set(anchor.pi().0 as usize, v) {
-            let _taskid = anchor.taskid();
-            let _i = anchor.pi();
-            let _this_type_name = param.typename(_i.0 as usize);
+        if !param.set(target_ca.pi().0 as usize, v) {
+            let _target_taskid = target_ca.taskid();
+            let _target_i = target_ca.pi();
+            let _target_type_name = param.typename(_target_i.0 as usize);
             let _data_type_name  = type_name::<T>();
-            error!("task#{_taskid:?}.cond#{_i:?} has type <{_this_type_name}> not identical to <{_data_type_name}>, \
-                    cannot be updated with {{{v:?}}}.");
+            error!("target task#{_target_taskid:?}.cond#{_target_i:?} has type <{_target_type_name}> not identical to <{_data_type_name}>, \
+                    cannot be updated with from task#{v_from:?}.{{{v:?}}}.");
             return None;
         }
         if cfg!(feature="log-trace") {
-            trace!("cond task#{:?} received cond#{:?}={{{v:?}}}", anchor.taskid(),anchor.pi());
+            trace!("target task#{:?} received from task#{v_from:?}.cond#{:?}={{{v:?}}}", target_ca.taskid(),target_ca.pi());
         } else {
-            debug!("cond task#{:?} received cond#{:?}", anchor.taskid(),anchor.pi());
+            debug!("target task#{:?} received from task#{v_from:?}.cond#{:?}", target_ca.taskid(),target_ca.pi());
         }
         Some(param.is_full())
     }
@@ -164,17 +175,22 @@ impl C1map {
 
 // tid and qid just used for log
 #[allow(unused_variables)]
-pub(crate) fn when_ci_comed<T:'static+Debug>(to:&CondAddr, (tid,v):(Option<TaskId>,&T), c1map:C1map, (qid,q):(usize,Queue))->bool {
-    let Some(true) = c1map.update_ci(to, v) else {
+pub(crate) fn when_ci_comed<T:'static+Debug>(target_ca:&CondAddr, (v,v_from):(&T,&TaskId), c1map:C1map, (qid,q):(usize,Queue))->bool {
+    let Some(true) = c1map.update_ci(target_ca,(v,v_from)) else {
         // the log has been processed in update_ci
         return false;
     };
-    let Some((task,postdo)) = c1map.remove(to.taskid().0) else {
-        error!("cond task#{:?} does not find.",to.taskid());
+
+    let TaskId(Some(ref target_taskid)) = target_ca.taskid() else {
+        unreachable!("the taskid has checked in update_ci()!");
+        return false;
+    };
+    let Some((target_task,postdo)) = c1map.remove(target_taskid) else {
+        error!("cond task#{:?} does not find.",target_ca.taskid());
         return  false;
     };
-    debug!("cond task#{:?} has all conditions been satified and scheduled to Q#{qid}", to.taskid());
-    q.add_boxtask(task,postdo);
+    debug!("cond task#{:?} has all conditions been satified and scheduled to Q#{qid}", target_ca.taskid());
+    q.add_boxtask(target_task,postdo);
     true
 }
 
@@ -184,26 +200,26 @@ pub(crate) fn when_nil_comed() {}
 
 
 pub(crate) trait WhenTupleComed {
-    fn foreach(&self, id:Option<TaskId>, c1map:C1map, q:(usize,Queue));
+    fn foreach(&self, id_from:&TaskId, c1map:C1map, q:(usize,Queue));
 }
 
 impl WhenTupleComed for () {
-    fn foreach(&self, _id:Option<TaskId>,_c1map:C1map, _q:(usize,Queue)) {
+    fn foreach(&self, _id_from:&TaskId,_c1map:C1map, _q:(usize,Queue)) {
     }
 }
 
 impl<T:'static+Debug> WhenTupleComed for ((T,CondAddr),) {
-    fn foreach(&self, id:Option<TaskId>, c1map:C1map, q:(usize,Queue)) {
-        when_ci_comed(&self.0.1, (id,&self.0.0), c1map, q);
+    fn foreach(&self, id_from:&TaskId, c1map:C1map, q:(usize,Queue)) {
+        when_ci_comed(&self.0.1, (&self.0.0,id_from), c1map, q);
     }
 }
 
 macro_rules! when_tuple_comed_impl {
     ($($i:tt $T:ident),+) => {
         impl< $($T:'static+Debug),+ > WhenTupleComed for ($(($T, CondAddr)),+) {
-            fn foreach(&self, id:Option<TaskId>, c1map: C1map, q: (usize,Queue)) {
+            fn foreach(&self, id_from:&TaskId, c1map: C1map, q: (usize,Queue)) {
                 $(
-                    when_ci_comed(&self.$i.1, (id,&self.$i.0), c1map.clone(), q.clone());
+                    when_ci_comed(&self.$i.1, (&self.$i.0,id_from), c1map.clone(), q.clone());
                 )+
             }
         }
@@ -215,7 +231,7 @@ macro_rules! when_tuple_comed_impl {
     ($(($t:ty, $n:tt)),+) => {
         // $t: ":"  ?????? error: expected one of `>` or `as`, found `:`
         // if $t 's type is ty. it is ok when $t is ident ???
-        impl< $($t:'static+Debug),+ > WhenTupleComed for ($($t,Anchor),+) {
+        impl< $($t:'static+Debug),+ > WhenTupleComed for ($($t,CondAddr),+) {
             fn foreach(&self, c1map:C1map, q:Queue) {
                 $(
                     when_ci_comed(&self.$n.1, &self.$n.0, c1map, q);

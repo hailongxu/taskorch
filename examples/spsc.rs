@@ -37,7 +37,7 @@ fn produce_task(submitter:TaskSubmitter) {
 
     prompt("exit");
     let id_exit = submitter.submit((|a:i32|println!("consume task='exit': recv cond={a} and exit.")).into_exit_task())
-        .unwrap().unwrap();
+        .unwrap();
 
     prompt("add");
     let id_add = submitter.submit(
@@ -45,7 +45,7 @@ fn produce_task(submitter:TaskSubmitter) {
             println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
             a+b
         }).into_task().to((id_exit,Pi::PI0).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     prompt("params");
     let _ = submitter.submit(

@@ -3,7 +3,7 @@ use crate::{
     meta::{Fndecl, Identical},
     queue::{when_ci_comed, C1map, WhenTupleComed},
     task::{
-        Task, TaskBuild, TaskCurrier, TaskMap, 
+        Task, TaskBuild, TaskCurrier, TaskMap,
         TaskId, taskid_next
     },
     Queue,
@@ -17,7 +17,7 @@ pub enum TaskError {
     /// when submit task, if the id has already existed in waitQueue.
     TaskIdAlreadyExists(TaskId),
 }
-type SummitResult = Result<Option<TaskId>,TaskError>;
+type SummitResult = Result<TaskId,TaskError>;
 
 /// Handles task submission to a specific queue
 #[derive(Clone)]
@@ -62,8 +62,8 @@ impl TaskSubmitter {
     /// 
     /// * if taskid has already existed, return Error
     /// * if the task has no params and you donot fill an explicit taskid, 
-    /// * here, return Ok(None)
-    /// * or else return Ok(Some(TaskId))
+    /// * here, return Ok(TaskId::NONE)
+    /// * or else return Ok(TaskId)
     /// 
     #[allow(private_bounds)]
     pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->SummitResult
@@ -77,11 +77,11 @@ impl TaskSubmitter {
         MapR: Send + 'static,
         MapFn::R: WhenTupleComed,
     {
-        let mk_postdo = |id:Option<TaskId>| {
+        let mk_postdo = |id:TaskId| {
             let c1map = self.c1map.clone();
             let c1queue = (self.qid,self.queue.clone());
             let postdo = move |r: Box<dyn Any>| {
-                let r_id = id;
+                let r_from = &id;
                 match map {
                     TaskMap::None => return,
                     // to single condaddr
@@ -98,7 +98,7 @@ impl TaskSubmitter {
                             // return;
                         };
                         let r: &C::R = &*r;
-                        when_ci_comed(&to, (r_id,r), c1map, c1queue);
+                        when_ci_comed(&to, (r,r_from), c1map, c1queue);
                     },
                     // to multi-condaddr
                     TaskMap::ToMany(mapfn, _) => {
@@ -116,7 +116,7 @@ impl TaskSubmitter {
                         let r: C::R = *r;
                         // dispatch to multi-target
                         let rtuple = mapfn.call((r,).into());
-                        rtuple.foreach(r_id, c1map, c1queue);
+                        rtuple.foreach(r_from, c1map, c1queue);
                     }
                 }
             };
@@ -130,38 +130,41 @@ impl TaskSubmitter {
         // without parameter
         if 0 == task.currier.count() {
             if LEVEL >= Level::Warn {
-                if let Some(_id) = task.id {
+                if let TaskId(Some(_id)) = task.id {
                     warn!("Ignore the taskid {_id:?}: no conditions found for this task.");
                 }
             }
             // if id is set we will check whether it is conflicted in map queue.
-            if let Some(id) = task.id {
-                if self.c1map.check(id).is_some() {
+            // if let Some(id) = task.id {
+                if self.c1map.check(task.id).is_some() {
                     error!("task#{:?} has existed in queue!!",task.id);
-                    return Err(TaskError::TaskIdAlreadyExists(id))
+                    return Err(TaskError::TaskIdAlreadyExists(task.id))
                 }
-            }
+            // }
 
             let taskid = task.id;
             let task = Box::new(task);
             let postdo = Box::new(mk_postdo(taskid));
             self.queue.add_boxtask(task,postdo);
-            debug!("task#{:?} added into Q#{}", crate::task::TaskIdOption(taskid), self.qid);
+            debug!("task#{:?} added into Q#{}", taskid, self.qid);
             Ok(taskid)
         } else { // with parameters
             let mut task = task;
-            if task.id.is_none() { task.id = Some(taskid_next()); }
+            if task.id.0.is_none() { task.id = taskid_next(); } // @A, ensure, the task.id is nonzero.
             let task = task;
-            let taskid = task.id.unwrap(); // task.id must be some
+            // task.id must be some
+            let TaskId(Some(taskid)) = task.id else {
+                unreachable!("task id has feeded in nonzero @A");
+            };
             let postdo = Box::new(mk_postdo(task.id));
             let id = self.c1map.try_insert(task, postdo, taskid);
             if id.is_some() {
                 debug_assert_eq!(Some(taskid),id);
                 debug!("cond-task#{taskid:?} added into waitQueue");
-                Ok(id)
+                Ok(TaskId(id))
             } else {
                 error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
-                Err(TaskError::TaskIdAlreadyExists(taskid))
+                Err(TaskError::TaskIdAlreadyExists(TaskId(id)))
             }
         }
     }

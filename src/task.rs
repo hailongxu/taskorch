@@ -14,6 +14,7 @@ use std::{
     marker::PhantomData,
     sync::atomic::{AtomicUsize, Ordering},
     ops::{Deref,DerefMut},
+    num::NonZeroUsize,
 };
 
 use crate::{curry::{CallOnce, CallParam, Currier}, meta::TupleOpt};
@@ -39,12 +40,15 @@ struct TaskIdGen {
 impl TaskIdGen {
     const fn new()->Self {
         Self {
-            nexter: AtomicUsize::new(0)
+            nexter: AtomicUsize::new(1)
         }
     }
     fn next(&self)->TaskId {
         TaskId::from(
-            self.nexter.fetch_add(1, Ordering::Relaxed)
+            match self.nexter.fetch_add(1, Ordering::Relaxed) {
+                0 => self.nexter.fetch_add(1, Ordering::Relaxed),
+                id => id,
+            }
         )
     }
 }
@@ -60,48 +64,50 @@ pub fn taskid_next()->TaskId {
 /// TaskId
 /// the unique id of a pool instance system
 /// 
+/// TaskId supports both zero and non-zero values.
+/// 
+/// - Zero values are reserved for internal use (unconditional tasks)
+/// - Callers cannot explicitly create zero IDs (attempts will log warnings)
+/// - Non-zero IDs are used for normal conditional tasks
+/// 
 /// # Example:
 /// ```
 /// let taskid = TaskId::from(3);
 /// let taskid = 3.into();
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
-pub struct TaskId(pub(crate) usize);
+pub struct TaskId(pub(crate) Option<NonZeroUsize>);
 
 impl TaskId {
+    const NONE : Self = Self(None);
+
+    #[inline]
+    pub fn new(id:usize)->Self {
+        if crate::log::LEVEL as usize >= crate::log::Level::Warn as usize && id == 0 {
+            warn!("TaskId::new() the input id is zero, is not avaiable!");
+        }
+        Self(NonZeroUsize::new(id))
+    }
+    #[inline]
     pub const fn as_usize(&self)->usize {
-        self.0
+        match self.0 {
+            Some(v) => v.get(),
+            None => 0,
+        }
     }
 }
 
 impl From<usize> for TaskId {
     fn from(id: usize) -> Self {
-        Self(id)
+        Self::new(id)
     }
 }
 
-impl Deref for TaskId {
-    type Target = usize;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl DerefMut for TaskId {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// just for debug message
-#[doc(hidden)]
-#[repr(transparent)]
-pub(crate) struct TaskIdOption(pub(crate) Option<TaskId>);
-
-impl std::fmt::Debug for TaskIdOption {
+impl std::fmt::Debug for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(taskid) = self.0 {
-            f.write_fmt(format_args!("TaskId({})",taskid.0))
+            f.write_fmt(format_args!("TaskId({})",taskid.get()))
             // f.debug_tuple("TaskId").field(&v).finish()
         } else {
             f.write_fmt(format_args!("TaskId(None)"))
@@ -110,14 +116,43 @@ impl std::fmt::Debug for TaskIdOption {
     }
 }
 
+// impl Deref for TaskId {
+//     type Target = usize;
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+// impl DerefMut for TaskId {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.0
+//     }
+// }
+
+// /// just for debug message
+// #[doc(hidden)]
+// #[repr(transparent)]
+// pub(crate) struct TaskIdOption(pub(crate) Option<TaskId>);
+
+// impl std::fmt::Debug for TaskIdOption {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         if let Some(taskid) = self.0 {
+//             f.write_fmt(format_args!("TaskId({})",taskid.as_usize()))
+//             // f.debug_tuple("TaskId").field(&v).finish()
+//         } else {
+//             f.write_fmt(format_args!("TaskId(None)"))
+//             // f.debug_tuple("TaskId").field(&v).finish()
+//         }
+//     }
+// }
+
 #[test]
 fn test_tid() {
     let tid = TaskId::from(3);
     let tid: TaskId = 3.into();
-    let tid = TaskIdOption(Some(tid));
-    println!("{tid:?}");
-    let tid = TaskIdOption(None);
-    println!("{tid:?}");
+    // let tid = TaskIdOption(Some(tid));
+    // println!("{tid:?}");
+    // let tid = TaskIdOption(None);
+    // println!("{tid:?}");
 }
 
 /// A 0-based index of representing the position of a parameter in fun or closure signature.
@@ -199,14 +234,14 @@ pub(crate) trait Task
     fn run(self:Box<Self>)->Option<Box<dyn Any>>;
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
     fn kind(&self)->Kind;
-    fn id(&self)->Option<TaskId>;
+    fn id(&self)->TaskId;
 }
 
 
 /// The carrier of the task, used to create and invoke its functionality.
 pub(crate) struct TaskCurrier<Currier> {
     pub(crate) currier: Currier,
-    pub(crate) id: Option<TaskId>,
+    pub(crate) id: TaskId,
     pub(crate) kind: Kind,
 }
 
@@ -235,7 +270,7 @@ impl<T> Task for TaskCurrier<T>
     fn kind(&self)->Kind {
         self.kind
     }
-    fn id(&self)->Option<TaskId> {
+    fn id(&self)->TaskId {
         self.id
     }
 }
@@ -244,7 +279,7 @@ pub struct TaskBuild<C,MapFn,MapR>(pub(crate) TaskCurrier<C>,pub(crate) TaskMap<
 
 impl<C,MapFn,MapR> TaskBuild<C,MapFn,MapR> {
     /// get task id from task, only if the task has conds.
-    pub fn id(&self)->Option<TaskId> {
+    pub fn id(&self)->TaskId {
         self.0.id
     }
 }
@@ -492,7 +527,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for F {
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
-                id: None,
+                id: TaskId::NONE,
                 kind: Kind::Normal,
             },
             TaskMap::None
@@ -502,7 +537,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for F {
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
-                id: None,
+                id: TaskId::NONE,
                 kind: Kind::Exit,
             },
             TaskMap::None
@@ -514,7 +549,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for (F,TaskI
         TaskBuild(
             TaskCurrier {
                 currier: Currier::from(self.0),
-                id: Some(self.1),
+                id: self.1,
                 kind: Kind::Normal,
             },
             TaskMap::None
@@ -524,7 +559,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,NullMapFn<R>,()> for (F,TaskI
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
-                id: Some(self.1),
+                id: self.1,
                 kind: Kind::Exit,
             },
             TaskMap::None
@@ -537,7 +572,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for 
         TaskBuild(
             TaskCurrier {
                 currier: Currier::from(self),
-                id: None,
+                id: TaskId::NONE,
                 kind: Kind::Normal,
             },
             TaskMap::None
@@ -547,7 +582,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for 
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self),
-                id: None,
+                id: TaskId::NONE,
                 kind: Kind::Exit,
             },
             TaskMap::None
@@ -559,7 +594,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for 
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
-                id: Some(self.1),
+                id: self.1,
                 kind: Kind::Normal,
             },
             TaskMap::None
@@ -569,7 +604,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,NullMapFn<R>,()> for 
         TaskBuild (
             TaskCurrier {
                 currier: Currier::from(self.0),
-                id: Some(self.1),
+                id: self.1,
                 kind: Kind::Exit,
             },
             TaskMap::None
@@ -584,7 +619,7 @@ macro_rules! impl_task_build_new {
                 TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self),
-                        id: None,
+                        id: TaskId::NONE,
                         kind: Kind::Normal,
                     },
                     TaskMap::None
@@ -595,7 +630,7 @@ macro_rules! impl_task_build_new {
                 TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self),
-                        id: None,
+                        id: TaskId::NONE,
                         kind: Kind::Exit,
                     },
                     TaskMap::None
@@ -609,7 +644,7 @@ macro_rules! impl_task_build_new {
                 TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self.0),
-                        id: Some(self.1),
+                        id: self.1,
                         kind: Kind::Normal,
                     },
                     TaskMap::None
@@ -620,7 +655,7 @@ macro_rules! impl_task_build_new {
                 TaskBuild (
                     TaskCurrier {
                         currier: Currier::from(self.0),
-                        id: Some(self.1),
+                        id: self.1,
                         kind: Kind::Exit,
                     },
                     TaskMap::None

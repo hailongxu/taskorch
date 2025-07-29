@@ -60,29 +60,29 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
     let id_exit = submitter1.submit(
         (|_:i32| {println!("task='exit2': exit");})
         .into_exit_task())
-        .unwrap().unwrap();
+        .unwrap();
     let id_exit = submitter1.submit(
         (|_:i32| {println!("task='exit1': exit and [1] => task='exit2'");1})
         .into_exit_task().to((id_exit,Pi::PI0).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // task add
     let id_add = submitter1.submit(
         (|a:i32,b:i32|{println!("task='add': (a:{a:?}+b:{b:?}) => task='exit'");a+b})
         .into_task().to((id_exit, Pi::PI0).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // task B1
     let id_b1 = submitter1.submit(
         (|a:i32|{println!("task='B1': recv (a:{a}) and [{a}] => task='add'");a})
         .into_task().to((id_add, Pi::PI0).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // task B2
     let id_b2 = submitter1.submit(
         (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}]=> task='add'");a})
         .into_task().to((id_add, Pi::PI1).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // submitter2
 
@@ -90,13 +90,13 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
     let id_exit3 = submitter2.submit(
         (|_:usize| {println!("task='exit3': exit");})
         .into_exit_task()
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // task count
     let id_count = submitter2.submit(
         (|a:&str|{println!("task='count': (a:{a:?}) and [{}] => task='exit3'",a.len());a.len()})
         .into_task().to((id_exit3, Pi::PI0).into())
-    ).unwrap().unwrap();
+    ).unwrap();
 
     // task A
     let _ = submitter2.submit(
