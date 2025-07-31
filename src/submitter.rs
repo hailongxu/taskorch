@@ -32,7 +32,7 @@ impl TaskSubmitter {
     /// Enqueues a new task for future scheduling
     ///
     /// # Examples:
-    /// ```
+    /// ```rust
     /// let task = (|a:i32|3,10).into_task(); // with explicit taskid=10
     /// let task = submitter.submit(task.into_task()); 
     /// assert_eq!(task,Ok(Some(TaskId::from(10))));
@@ -50,8 +50,8 @@ impl TaskSubmitter {
     /// let task = (||3,10).into_task(); // with explicit taskid=10
     /// let task = submitter.submit(task.into_task()); 
     /// assert_eq!(task,Error(err_msg)));
-    /// 
     /// ```
+    /// 
     /// # argments
     /// * `TaskBuild` - generate from `.into_task()` 
     /// * `task` - The main body of the task to be executed. 

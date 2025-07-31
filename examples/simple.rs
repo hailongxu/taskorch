@@ -1,6 +1,6 @@
-use taskorch::{CondAddr, Pi, Pool, Queue, TaskBuildNew};
-//  A       => [B1, B2] ## 1->N
-// [B1, B2] =>  Exit    ## N->1
+use taskorch::{Pi, Pool, Queue, TaskBuildNew};
+// [A]      => [B1, B2] ## 1->N
+// [B1, B2] => [Exit]   ## N->1
 fn main() {
     println!("----- test task orch -----");
 

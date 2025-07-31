@@ -3,17 +3,25 @@
 //! Core scheduling concepts:
 //! 
 //! <1> CondAddr: Logical address to locate a condition (not a memory address)
+//! Each Cond belongs to task, which is identified/found by taskid.
+//! Each task has many Params, which is identified/found by Pi.
+//! hence, the condaddr can be unique be located by taskid and paramter index.
+//! Contruct a CondAddr via `from()`.
+//! ## Exmaples:
+//! ```rust
+//! // cond addr is at (Task#1 and Task.Param#0) 
+//! let ca = CondAddr::from((TaskId::new(1),Pi::PI0)); 
+//! ```
 //! 
 //! <2> TaskId: Unique identifier for a task
 //! 
-//! <3> Pi: Zero-based index of a task parameter (also used as condition i
+//! <3> Pi: Zero-based index of a task parameter (also used as condition i)
 //! 
 
 use std::{
     any::Any,
     marker::PhantomData,
     sync::atomic::{AtomicUsize, Ordering},
-    ops::{Deref,DerefMut},
     num::NonZeroUsize,
 };
 
@@ -56,24 +64,28 @@ impl TaskIdGen {
 /// Generate a task ID
 /// * returns
 /// * type `TaskId`
+/// - except TaskId::None
 pub fn taskid_next()->TaskId {
     TASKID.next()
 }
 
 
+
 /// TaskId
 /// the unique id of a pool instance system
 /// 
-/// TaskId supports both zero and non-zero values.
+/// enforce `TaskId` zero/non-zero semantics
+/// - Zero `TaskId` is now strictly internal (auto-assigned for unconditional tasks)
+/// - Caller attempts to create zero IDs will log warnings
+/// - Explicit non-zero IDs are required for all tasks (both conditional and unconditional). 
 /// 
-/// - Zero values are reserved for internal use (unconditional tasks)
-/// - Callers cannot explicitly create zero IDs (attempts will log warnings)
-/// - Non-zero IDs are used for normal conditional tasks
+/// You can also convert the `TaskId` to `usize`, using `.as_usize()`.
 /// 
 /// # Example:
 /// ```
 /// let taskid = TaskId::from(3);
 /// let taskid = 3.into();
+/// let uid = taskid.as_usize();
 /// ```
 #[derive(Clone, Copy, PartialEq)]
 #[repr(transparent)]
@@ -82,13 +94,45 @@ pub struct TaskId(pub(crate) Option<NonZeroUsize>);
 impl TaskId {
     const NONE : Self = Self(None);
 
+    /// Construct a TaskId from usize
+    ///
+    /// # Behavior
+    /// - For non-zero IDs: Always succeeds
+    /// - For zero ID:
+    ///   - In debug mode: panics immediately
+    ///   - In release mode: logs warning but returns `TaskId::NONE`
+    /// 
+    /// Examples:
+    /// ```rust
+    /// # use taskorch::task::TaskId; 
+    /// let taskid = TaskId::new(1); // ok
+    /// ```
+    /// 
+    /// Debug mode panic example (only compiles in debug):
+    /// ```should_panic
+    /// # use taskorch::task::TaskId;
+    /// TaskId::new(0); // panics in debug
+    /// ```
+    ///
+    /// Release mode behavior demonstration:
+    /// ```no_run
+    /// # use taskorch::task::TaskId;
+    /// let _ = TaskId::new(0); // would log warning in release
+    /// ```
     #[inline]
     pub fn new(id:usize)->Self {
+        #[cfg(debug_assertions)]
+        if id == 0 {
+            panic!("TaskId cannot be zero");
+        }
+        #[cfg(not(debug_assertions))]
         if crate::log::LEVEL as usize >= crate::log::Level::Warn as usize && id == 0 {
             warn!("TaskId::new() the input id is zero, is not avaiable!");
         }
         Self(NonZeroUsize::new(id))
     }
+
+    /// convert the TskId to usize
     #[inline]
     pub const fn as_usize(&self)->usize {
         match self.0 {
@@ -98,6 +142,7 @@ impl TaskId {
     }
 }
 
+/// construct a `TaskId` from a `usize`
 impl From<usize> for TaskId {
     fn from(id: usize) -> Self {
         Self::new(id)
@@ -149,6 +194,7 @@ impl std::fmt::Debug for TaskId {
 fn test_tid() {
     let tid = TaskId::from(3);
     let tid: TaskId = 3.into();
+    let tid = TaskId::new(0);
     // let tid = TaskIdOption(Some(tid));
     // println!("{tid:?}");
     // let tid = TaskIdOption(None);
@@ -286,6 +332,7 @@ impl<C,MapFn,MapR> TaskBuild<C,MapFn,MapR> {
 
 // This is done to prevent exposing `curry` to external users, thereby avoiding unnecessary complexity in the documentation.
 // for the `to()` use the R of CallOnce:R, but it's just visibility inside crate.
+#[doc(hidden)]
 pub trait RofCurrier {
     type Ret;
 }
@@ -297,9 +344,13 @@ impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
 impl<Currier:CallOnce+RofCurrier,R1> TaskBuild<Currier, NullMapFn<R1>,()>
 {
     /// Configures the target condaddr to `(taskid, condid)`.
+    /// attention:
+    /// if the task has no result, the the to configuration is ignored.
+    /// 
     /// # Arguments:
-    /// * `taskid` - target task identifier
+    /// * ca:`CondAddr` - the target cond place. target task identifier
     /// * `i` - cond #index (0-based)
+    /// 
     // pub fn old_to(self, taskid:usize, i:usize) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
     pub fn to(self, ca:CondAddr) -> TaskBuild<Currier, NullMapFn<Currier::Ret>,()> {
         TaskBuild (
