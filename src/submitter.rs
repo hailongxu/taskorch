@@ -1,13 +1,7 @@
 use crate::{
-    curry::CallOnce,
-    meta::{Fndecl, Identical},
-    queue::{when_ci_comed, C1map, WhenTupleComed},
-    task::{
-        Task, TaskBuild, TaskCurrier, TaskMap,
-        TaskId, taskid_next
-    },
-    Queue,
-    log::{Level,LEVEL},
+    curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{when_ci_comed, C1map, WhenTupleComed}, task::{
+        taskid_next, Task, TaskBuild, TaskCurrier, TaskId, TaskMap
+    }, Queue
 };
 
 use std::{any::{Any, TypeId}, fmt::Debug};
@@ -66,7 +60,7 @@ impl TaskSubmitter {
     /// * or else return Ok(TaskId)
     /// 
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR>(&self,TaskBuild(task,map):TaskBuild<C,MapFn,MapR>)->SummitResult
+    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskBuild{task,map:TaskMap(mapfn),tofn,..}:TaskBuild<C,MapFn,MapFn::R,ToFn>)->SummitResult
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -74,51 +68,53 @@ impl TaskSubmitter {
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
         MapFn::Pt: From<(<C as CallOnce>::R,)>,
         MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
-        MapR: Send + 'static,
-        MapFn::R: WhenTupleComed,
+        MapFn::R: TupleCondAddr + Clone,
+        // MapR: Send + 'static + TupleCondAddr,
+        // MapFn::R: WhenTupleComed,
+        // MapR::E1: Debug,
+        ToFn: Send + 'static,
+        // ToFn: Fndecl<(MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
+        // <ToFn as Fndecl<(MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(MapFn::R,)>,
+        // (
+        //     MapFn::R, 
+        //     <ToFn as Fndecl<(MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
+        // ): WhenTupleComed,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
+        for<'b> <ToFn as Fndecl<(&'b MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'b MapFn::R,)>,
+        for<'c> <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: Identical<(&'c MapFn::R,)>,
+        for<'d,'e> (
+            &'d MapFn::R, 
+            &'e <ToFn as Fndecl<(&'d MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
+            ): WhenTupleComed,
+            // here if we use 'd to substitue the 'e, the error occurs. ???
     {
         let mk_postdo = |id:TaskId| {
             let c1map = self.c1map.clone();
             let c1queue = (self.qid,self.queue.clone());
             let postdo = move |r: Box<dyn Any>| {
                 let r_from = &id;
-                match map {
-                    TaskMap::None => return,
-                    // to single condaddr
-                    TaskMap::To(to) => {
-                        let _actual_type = r.type_id();
-                        let Ok(r) = r.downcast::<C::R>() else {
-                            let _expected_type = TypeId::of::<C::R>();
-                            let _expected_type_name = std::any::type_name::<C::R>();
-                            error!(
-                                "task return value downcast failed: expected {}, got {:?}",
-                                _expected_type_name, _actual_type
-                            );
-                            panic!("failed to conver to R type");
-                            // return;
-                        };
-                        let r: &C::R = &*r;
-                        when_ci_comed(&to, (r,r_from), c1map, c1queue);
-                    },
-                    // to multi-condaddr
-                    TaskMap::ToMany(mapfn, _) => {
-                        let _actual_type = r.type_id();
-                        let Ok(r) = r.downcast::<C::R>() else {
-                            let _expected_type = TypeId::of::<C::R>();
-                            let _expected_type_name = std::any::type_name::<C::R>();
-                            error!(
-                                "task return value downcast failed: expected {}, got {:?}",
-                                _expected_type_name, _actual_type
-                            );
-                            panic!("failed to conver to R type");
-                            // return;
-                        };
-                        let r: C::R = *r;
-                        // dispatch to multi-target
-                        let rtuple = mapfn.call((r,).into());
-                        rtuple.foreach(r_from, c1map, c1queue);
-                    }
-                }
+                let _actual_type = r.type_id();
+                let Ok(r) = r.downcast::<C::R>() else {
+                    let _expected_type = TypeId::of::<C::R>();
+                    let _expected_type_name = std::any::type_name::<C::R>();
+                    error!(
+                        "task return value downcast failed: expected {}, got {:?}",
+                        _expected_type_name, _actual_type
+                    );
+                    panic!("failed to conver to R type");
+                    // return;
+                };
+                let r: C::R = *r;
+                let rtuple = mapfn.call((r,).into());
+                let rcondaddr = tofn.call(ToFn::Pt::from((&rtuple,)));
+                (&rtuple, &rcondaddr).foreach(r_from, c1map, c1queue);
+                // (rtuple, rcondaddr).foreach(r_from, c1map, c1queue);
+                // if the 'd and 'e is replaced by 'd, here will occer error.
+                // because, the lifecycle of &rtuple and &rcondaddr are equal from func signatures.
+                // but actually 
+                // submitter.rs(110, 13): `rcondaddr` dropped here while still borrowed
+                // drop(rcondaddr);
+                // drop(rtuple); 
             };
             postdo
         };
@@ -168,14 +164,15 @@ impl TaskSubmitter {
             }
         }
     }
+
     #[deprecated(
         since="0.3.0",
         note = "Use `submit()` instead for strict type check. \
                `old_submit()` will be removed in next release."
     )]
-
+    #[cfg(false)]
     #[allow(private_bounds)]
-    pub fn old_submit<C,MapFn,MapR>(&self,taskbuild:TaskBuild<C,MapFn,MapR>)->TaskId
+    pub fn old_submit<C,MapFn,MapR,ToFn>(&self,taskbuild:TaskBuild<C,MapFn,MapFn::R,ToFn>)->TaskId
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -183,8 +180,16 @@ impl TaskSubmitter {
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
         MapFn::Pt: From<(<C as CallOnce>::R,)>,
         MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
-        MapR: Send + 'static,
-        MapFn::R: WhenTupleComed,
+        MapFn::R: TupleCondAddr,
+        ToFn: Send + 'static,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
+        for<'b> <ToFn as Fndecl<(&'b MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'b MapFn::R,)>,
+        for<'c> <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: Identical<(&'c MapFn::R,)>,
+        for<'d,'e> (
+            &'d MapFn::R, 
+            &'e <ToFn as Fndecl<(&'d MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
+            ): WhenTupleComed,
+            // here if we use 'd to substitue the 'e, the error occurs. ???
     {
         self.submit(taskbuild).unwrap()
     }
@@ -201,4 +206,14 @@ fn test_conv() {
     assert!(b.is_none());
     let b = a.downcast_ref::<i64>();
     assert!(b.is_none());
+}
+
+#[test]
+fn test_submmit() {
+    use crate::task::TaskBuildNew;
+    use crate::curry::Currier;
+    use crate::task::PassthroughMapFn;
+    use crate::task::OneToOne;
+    let task: TaskBuild<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>> = (||println!("task='free':  Hello, 1 2 3 ..")).into_task();
+    println!("task type={:?}", std::any::type_name_of_val(&task));
 }

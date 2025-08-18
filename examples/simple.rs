@@ -14,7 +14,8 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    let _ = submitter.submit((||println!("task='free':  Hello, 1 2 3 ..")).into_task());
+    let task = (||println!("task='free':  Hello, 1 2 3 ..")).into_task();
+    let _ = submitter.submit(task);
 
     // an exit task with cond(#0 i32, #2 str)
     let id_exit = submitter.submit(
@@ -24,10 +25,10 @@ fn main() {
     ).unwrap();
 
     // N->1 : pass i32 to exit-task.p0
-    let id_b1 = submitter.submit(
-        (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
-        .into_task().to(((id_exit, Pi::PI0)).into())
-    ).unwrap();
+    let id_b1 = (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
+        .into_task();
+    let id_b1 = id_b1.to((id_exit, Pi::PI0).into());
+    let id_b1 = submitter.submit(id_b1).unwrap();
 
     // N->1 : pass str to exit task.p1
     let id_b2 = submitter.submit(

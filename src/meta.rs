@@ -1,3 +1,7 @@
+use std::marker::PhantomData;
+
+use crate::{CondAddr, Pi, TaskId};
+
 
 
 pub(crate) trait Identical<T> {}
@@ -87,17 +91,87 @@ fndecl_impl!(0 P1, 1 P2, 2 P3, 3 P4, 4 P5, 5 P6, 6 P7, 7 P8);
 
 #[test]
 fn test_fndecl() {
-    fn get<F:Fndecl<Pt,R>,Pt,R>(_f:F) {}
-    get(||3);
-    get(|_:i8|3);
-    get(|_:i8,_:i8,|3);
-    get(|_:i8,_:i8,_:i8|3);
-    get(|_:i8,_:i8,_:i8,_:i8,|3);
-    get(|_:i8,_:i8,_:i8,_:i8,_:i8|3);
-    get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,|3);
-    get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8|3);
-    get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8|3);
+    {
+        fn get<F:Fndecl<(String,),(String,)>>(_f:F) {}
+        fn ff2(_:String)->(String,) {(String::new(),)}
+        get(ff2);
+        struct AA<F:Fndecl<(String,),(String,)>> {
+            f: F,
+        }
+        let aa = AA {
+            f: ff2,
+        };
+    }
+    {
+        fn get<F:Fndecl<Pt,R>,Pt,R>(_f:F) {}
+        fn ff() {}
+        fn ff2(_:String)->(String,) {(String::new(),)}
+        get(ff);
+        get(ff2);
+        get(||3);
+        get(|_:i8|3);
+        get(|_:i8,_:i8,|3);
+        get(|_:i8,_:i8,_:i8|3);
+        get(|_:i8,_:i8,_:i8,_:i8,|3);
+        get(|_:i8,_:i8,_:i8,_:i8,_:i8|3);
+        get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,|3);
+        get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8|3);
+        get(|_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8,_:i8|3);
+    }
 }
+
+pub(crate) trait TupleCondAddr {
+    type E1;
+    type Cat; // CondAddrTuple
+    const ONETOONE: Self::Cat;
+}
+
+impl TupleCondAddr for () {
+    type E1 = ();
+    type Cat = ();
+    const ONETOONE: Self::Cat = ();
+}
+
+// pub(crate) struct Single<T>(PhantomData<T>);
+// impl<T> TupleCondAddr for Single<T> {
+//     type E1 = T;
+//     type Cat = CondAddr<T>;
+//     // const NONE:Self::Opt = (None::<T1>,);
+// }
+
+impl<T1> TupleCondAddr for (T1,) {
+    type E1 = T1;
+    type Cat = (CondAddr<T1>,);
+    const ONETOONE: Self::Cat = (CondAddr::<T1>::const_new::<0>(),);
+}
+
+macro_rules! impl_tuple_condaddr {
+    ($($n:literal $T:ident),+) => {
+        impl<$($T),+> TupleCondAddr for ($($T,)+) {
+            type E1 = T1;
+            type Cat = ($(CondAddr<$T>,)+);
+            const ONETOONE:Self::Cat = ($(CondAddr::<$T>::const_new::<$n>(),)+);
+        }
+    };
+}
+
+impl_tuple_condaddr!(0 T1,1 T2);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6,6 T7);
+impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6,6 T7,7 T8);
+
+
+#[test]
+fn test_condaddr() {
+    let addr = <(i32, u32) as TupleCondAddr>::ONETOONE;
+    assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Pi::PI0)));
+    assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Pi::PI1)));
+    dbg!(addr);
+}
+
 
 pub(crate) trait Handle {
     // type T;
