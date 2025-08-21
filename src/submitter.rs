@@ -1,5 +1,5 @@
 use crate::{
-    curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{when_ci_comed, C1map, WhenTupleComed}, task::{
+    curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
         taskid_next, Task, TaskBuild, TaskCurrier, TaskId, TaskMap
     }, Queue
 };
@@ -65,28 +65,24 @@ impl TaskSubmitter {
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
         C::R: 'static + Debug,
+
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
         MapFn::Pt: From<(<C as CallOnce>::R,)>,
         MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
         MapFn::R: TupleCondAddr + Clone,
-        // MapR: Send + 'static + TupleCondAddr,
-        // MapFn::R: WhenTupleComed,
-        // MapR::E1: Debug,
+
         ToFn: Send + 'static,
-        // ToFn: Fndecl<(MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
-        // <ToFn as Fndecl<(MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(MapFn::R,)>,
-        // (
-        //     MapFn::R, 
-        //     <ToFn as Fndecl<(MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
-        // ): WhenTupleComed,
         for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
-        for<'b> <ToFn as Fndecl<(&'b MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'b MapFn::R,)>,
-        for<'c> <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: Identical<(&'c MapFn::R,)>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'a MapFn::R,)>,
         for<'d,'e> (
-            &'d MapFn::R, 
-            &'e <ToFn as Fndecl<(&'d MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
-            ): WhenTupleComed,
-            // here if we use 'd to substitue the 'e, the error occurs. ???
+            &'d MapFn::R,
+            &'e <MapFn::R as TupleCondAddr>::Cat,
+            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
+        ): WhenTupleComed,
+        // here if we use 'd to substitue the 'e, the error occurs. ???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat: From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
+        // if subsitue the 2nd 'a with 'b, will lead to error???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat: Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
     {
         let mk_postdo = |id:TaskId| {
             let c1map = self.c1map.clone();
@@ -107,8 +103,8 @@ impl TaskSubmitter {
                 let r: C::R = *r;
                 let rtuple = mapfn.call((r,).into());
                 let rcondaddr = tofn.call(ToFn::Pt::from((&rtuple,)));
-                (&rtuple, &rcondaddr).foreach(r_from, c1map, c1queue);
-                // (rtuple, rcondaddr).foreach(r_from, c1map, c1queue);
+                (&rtuple, (&rcondaddr).into()).foreach(r_from, c1map, c1queue);
+
                 // if the 'd and 'e is replaced by 'd, here will occer error.
                 // because, the lifecycle of &rtuple and &rcondaddr are equal from func signatures.
                 // but actually 
@@ -163,6 +159,7 @@ impl TaskSubmitter {
                 Err(TaskError::TaskIdAlreadyExists(TaskId(id)))
             }
         }
+        // Ok(TaskId::NONE)
     }
 
     #[deprecated(

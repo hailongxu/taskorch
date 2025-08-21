@@ -4,6 +4,127 @@ use crate::{CondAddr, Pi, TaskId};
 
 
 
+pub trait TupleAt<const I:u8> {
+    type T;
+    fn value_at(&self)->&Self::T;
+}
+impl<const I:u8> TupleAt<I> for () {
+    type T = ();
+    fn value_at(&self)->&() {
+        &()
+    }
+}
+impl<T1> TupleAt<0> for (T1,) {
+    type T=T1;
+    fn value_at(&self)->&Self::T {
+        &self.0
+    }
+}
+
+trait TupleExtAt {
+    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::T
+        where Self: TupleAt<I>;
+    // {
+    //         <Self as TupleAt<I>>::value_at(&self)
+    // }
+}
+
+impl<T> TupleExtAt for T {
+    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::T
+        where Self: TupleAt<I> {
+            <Self as TupleAt<I>>::value_at(&self)
+    }
+}
+
+
+// // error
+// macro_rules! tuple_at_impl {
+//     ($($i:tt $T:ident),+) => {
+//         $(
+//         impl<$($T),+> TupleAt<$i> for ($($T),+) {
+//             type T=$T;
+//             fn value_at(&self)->&Self::T {
+//                 &self.$i
+//             }
+//         }
+//         )+
+//     };
+// }
+// tuple_at_impl!(0 T1,1 T2);
+
+macro_rules! tuple_at_impl {
+    ($i: tt $TO: ident; $($T: ident),+) => {
+        impl<$($T),+> TupleAt<$i> for ($($T),+) {
+            type T=$TO;
+            fn value_at(&self)->&Self::T {
+                &self.$i
+            }
+        }
+    };
+}
+
+// macro_rules! tuple_at_impl2 {
+//     ($($n:tt $T:ident),+;$($Ti:ident),+) => {
+//         $(
+//         tuple_at_impl!($n $T; $($Ti) +);
+//         )+
+//     };
+// }
+
+// tuple_at_impl2!(0 T1,1 T2; T1,T2);
+
+tuple_at_impl!(0 T1; T1,T2);
+tuple_at_impl!(1 T2; T1,T2);
+
+tuple_at_impl!(0 T1; T1,T2,T3);
+tuple_at_impl!(1 T2; T1,T2,T3);
+tuple_at_impl!(2 T3; T1,T2,T3);
+
+tuple_at_impl!(0 T1; T1,T2,T3,T4);
+tuple_at_impl!(1 T2; T1,T2,T3,T4);
+tuple_at_impl!(2 T3; T1,T2,T3,T4);
+tuple_at_impl!(3 T4; T1,T2,T3,T4);
+
+tuple_at_impl!(0 T1; T1,T2,T3,T4,T5);
+tuple_at_impl!(1 T2; T1,T2,T3,T4,T5);
+tuple_at_impl!(2 T3; T1,T2,T3,T4,T5);
+tuple_at_impl!(3 T4; T1,T2,T3,T4,T5);
+tuple_at_impl!(4 T5; T1,T2,T3,T4,T5);
+
+tuple_at_impl!(0 T1; T1,T2,T3,T4,T5,T6);
+tuple_at_impl!(1 T2; T1,T2,T3,T4,T5,T6);
+tuple_at_impl!(2 T3; T1,T2,T3,T4,T5,T6);
+tuple_at_impl!(3 T4; T1,T2,T3,T4,T5,T6);
+tuple_at_impl!(4 T5; T1,T2,T3,T4,T5,T6);
+tuple_at_impl!(5 T6; T1,T2,T3,T4,T5,T6);
+
+tuple_at_impl!(0 T1; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(1 T2; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(2 T3; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(3 T4; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(4 T5; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(5 T6; T1,T2,T3,T4,T5,T6,T7);
+tuple_at_impl!(6 T7; T1,T2,T3,T4,T5,T6,T7);
+
+tuple_at_impl!(0 T1; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(1 T2; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(2 T3; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(3 T4; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(4 T5; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(5 T6; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(6 T7; T1,T2,T3,T4,T5,T6,T7,T8);
+tuple_at_impl!(7 T8; T1,T2,T3,T4,T5,T6,T7,T8);
+
+#[test]
+fn test_tuple_at() {
+    type T = (i32,&'static str);
+    let a = <T as TupleAt::<0>>::value_at(&(2,""));
+    let a = (2,"").at::<0>();
+}
+
+
+
+
 pub(crate) trait Identical<T> {}
 impl<T> Identical<T> for T {}
 
@@ -40,7 +161,7 @@ impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7);
 impl_tupleopt!(T1,T2,T3,T4,T5,T6,T7,T8);
 
 
-pub(crate) trait Fndecl<PS,R> {
+pub trait Fndecl<PS,R> {
     type Pt;// Params Tuple : From<PS>;
     type R;
     fn call(self,ps:Self::Pt)->Self::R;
@@ -120,7 +241,7 @@ fn test_fndecl() {
     }
 }
 
-pub(crate) trait TupleCondAddr {
+pub trait TupleCondAddr {
     type E1;
     type Cat; // CondAddrTuple
     const ONETOONE: Self::Cat;

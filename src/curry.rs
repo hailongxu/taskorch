@@ -107,7 +107,7 @@ fn test3<'a>() {
 }
 
 
-pub(crate) trait CallOnce {
+pub trait CallOnce {
     type R;
     fn call_once(self)->Self::R;
     fn count(&self)->usize;

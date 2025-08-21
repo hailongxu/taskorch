@@ -25,7 +25,7 @@ use std::{
     num::NonZeroUsize,
 };
 
-use crate::{curry::{CallOnce, CallParam, Currier}, meta::{TupleCondAddr, TupleOpt}};
+use crate::{curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
 use crate::meta::Fndecl;
 
 
@@ -260,7 +260,7 @@ impl<T> From<Pi<T>> for u8 {
 pub struct CondAddr<T>(TaskId,Pi<T>);
     // where Pi<T>: Copy;
 impl<T> CondAddr<T> {
-    const NONE: Self = Self(TaskId::NONE,Pi::PINONE);
+    pub const NONE: Self = Self(TaskId::NONE,Pi::PINONE);
     pub(crate) const fn const_new<const i:u8>()->Self {
         Self(TaskId::NONE, Pi::const_new::<i>())
     }
@@ -278,6 +278,10 @@ impl<T> CondAddr<T> {
     pub fn set(&mut self, id:TaskId, i:Pi<T>) {
         self.0 = id;
         self.1 = i;
+    }
+    #[inline]
+    pub fn set_taskid(&mut self, id:TaskId) {
+        self.0 = id
     }
 }
 
@@ -354,18 +358,18 @@ impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskBuild<C,MapFn,MapR,ToFn> {
 
 // This is done to prevent exposing `curry` to external users, thereby avoiding unnecessary complexity in the documentation.
 // for the `to()` use the R of CallOnce:R, but it's just visibility inside crate.
-#[doc(hidden)]
-pub trait RofCurrier {
-    type Ret;
-}
-// here, we predefinetely know the R is excitley the type of F::CallOnce::R
-impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
-    type Ret = R;
-}
+// #[doc(hidden)]
+// pub trait RofCurrier {
+//     type Ret;
+// }
+// // here, we predefinetely know the R is excitley the type of F::CallOnce::R
+// impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
+//     type Ret = R;
+// }
 
-pub(crate) fn pass_through<T>(t:T)->(T,) {
-    (t,)
-}
+// pub(crate) fn pass_through<T>(t:T)->(T,) {
+//     (t,)
+// }
 
 #[test]
 fn test_pass_through() {
@@ -392,8 +396,10 @@ fn test_pass_through() {
 }
 
 // impl<Currier:CallOnce+RofCurrier> TaskBuild<Currier, PassthroughMapFn<Currier::Ret>,()>
-impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
-    where R1:TupleCondAddr
+impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
+    where
+    TC: TupleOpt,
+    R1:TupleCondAddr,
 {
     /// Configures the target condaddr to `(taskid, condid)`.
     /// attention:
@@ -405,16 +411,20 @@ impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
     /// 
     // pub fn old_to(self, taskid:usize, i:usize) -> TaskBuild<Currier, PassthroughMapFn<Currier::Ret>,()> {
     // Tt: Target Type
-    pub fn to<'a>(self, ca:CondAddr<Currier::R>) 
+    pub fn to<'a>(self, ca:CondAddr<R>)
         -> TaskBuild<
-            Currier,
-            impl Fndecl<(Currier::R,),(Currier::R,)>,
-            (Currier::R,),
-            impl Fndecl<(&'a (Currier::R,),),CondAddr<Currier::R>>
+            Currier<F,TC,R>,
+            PassthroughMapFn<R>,
+            (R,),
+            OneToOne<(R,)>,
+            // impl Fndecl<(R,),(R,)>,
+            // (R,),
+            // impl Fndecl<(&'a (R,),),CondAddr<R>>
         >
     {
-        let map  = TaskMap(pass_through::<Currier::R>);
-        let tofn = move |_:&(Currier::R,)| ca;
+        let map  = TaskMap(PassthroughMapFn::<R>::NULL);
+        let tofn = OneToOne::<(R,)>((ca,));
+        // let tofn = move |_:&(R,)| ca;
         TaskBuild {
             task: self.task,
             map,
@@ -431,10 +441,10 @@ impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
     // pub fn old_to(self, to: usize, pi: usize) -> TaskBuild<Currier, PassthroughMapFn<Currier::R>,(Currier::R,)>
     pub fn old_to<'a>(self, to: usize, pi: usize) 
         -> TaskBuild<
-            Currier,
-            impl Fndecl<(Currier::R,),(Currier::R,)>,
-            (Currier::R,),
-            impl Fndecl<(&'a (Currier::R,),),CondAddr<Currier::R>>
+            Currier<F,TC,R>,
+            PassthroughMapFn<R>,
+            (R,),
+            OneToOne<(R,)>,
         >
     {
         warn!("Use .to() instead, the .old_to() will be removed in next version.");
@@ -446,8 +456,10 @@ impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
     }
 }
 
-impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
-    where R1:TupleCondAddr
+impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
+    where
+    TC: TupleOpt,
+    R1: TupleCondAddr,
 {
     /// Distribute the result of bady task to multi condaddrs.
     /// 
@@ -495,15 +507,16 @@ impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
     /// ```
     pub fn fan_tuple_with<'a,MapFn,MapR>(self, mapfn:MapFn)
         -> TaskBuild<
-            Currier,
-            impl Fndecl<(Currier::R,),MapR>,
+            Currier<F,TC,R>,
+            MapFn,
+            // impl Fndecl<(R,),MapR>,
             MapR,
             OneToOne::<MapR>,
         >
         where
         MapR: TupleCondAddr,
         MapR::Cat: Default,
-        MapFn: Fndecl<(Currier::R,),MapR>,
+        MapFn: Fndecl<(R,),MapR>,
     {
         TaskBuild {
             task: self.task,
@@ -513,6 +526,35 @@ impl<Currier:CallOnce,MapFn1,R1,ToFn1> TaskBuild<Currier, MapFn1,R1,ToFn1>
         }
     }
 }
+
+impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
+    where
+    TC: TupleOpt,
+    R1: TupleCondAddr,
+{
+    pub fn all_to(mut self, cat: R1::Cat)->Self {
+        self.tofn.0 = cat;
+        self
+    }
+}
+
+impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
+    where
+    TC: TupleOpt,
+    R1: TupleCondAddr,
+{
+    pub fn input_at<const I:u8>(&self)->CondAddr<TC::T>
+        where TC: TupleAt<I>
+    {
+        CondAddr(self.id(), Pi::from(I))
+    }
+    pub fn output_at<const I:u8>(&self)->CondAddr<R1::T>
+        where R1: TupleAt<I>
+    {
+        CondAddr(self.id(), Pi::from(I))
+    }
+}
+
 
 /// TaskBuildOp provides target condaddr configuration.
 #[deprecated(
@@ -667,6 +709,7 @@ pub struct PassthroughMapFn<P> {
 impl<P> PassthroughMapFn<P> {
     const NULL:Self = Self {phantom:PhantomData};
 }
+
 impl<P> Fndecl<(P,),(P,)> for PassthroughMapFn<P> {
     type Pt=(P,);
     type R=(P,);
@@ -679,8 +722,8 @@ impl<P:TupleCondAddr> OneToOne<P>
 {
     const ONETOONE:Self = Self(P::ONETOONE);
 }
-impl<Rtuple:TupleCondAddr> Fndecl<(Rtuple,),Rtuple::Cat> for OneToOne<Rtuple> {
-    type Pt = (Rtuple,);
+impl<'a,Rtuple:TupleCondAddr> Fndecl<(&'a Rtuple,),Rtuple::Cat> for OneToOne<Rtuple> {
+    type Pt = (&'a Rtuple,);
     type R = Rtuple::Cat;
     fn call(self,_ps:Self::Pt)->Self::R {
         self.0
