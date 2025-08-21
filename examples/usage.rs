@@ -1,5 +1,5 @@
 
-use taskorch::{Pi, Pool, Queue, TaskBuildNew, TaskSubmitter};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskSubmitter};
 
 /// count of a string
 /// 1 ---> N
@@ -57,59 +57,54 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
     // Exit task construction
     // This elegant approach ensures all threads exit one by one,
     // guaranteeing each thread can receive the exit message
-    let id_exit = submitter1.submit(
+    let exit = submitter1.submit(
         (|_:i32| {println!("task='exit2': exit");})
         .into_exit_task())
         .unwrap();
-    let id_exit = submitter1.submit(
+    let exit = submitter1.submit(
         (|_:i32| {println!("task='exit1': exit and [1] => task='exit2'");1})
-        .into_exit_task().to((id_exit,Pi::PI0).into())
+        .into_exit_task().to(exit.input_at::<0>())
     ).unwrap();
 
     // task add
-    let id_add = submitter1.submit(
+    let add = submitter1.submit(
         (|a:i32,b:i32|{println!("task='add': (a:{a:?}+b:{b:?}) => task='exit'");a+b})
-        .into_task().to((id_exit, Pi::PI0).into())
+        .into_task().to(exit.input_at::<0>())
     ).unwrap();
 
     // task B1
-    let id_b1 = submitter1.submit(
+    let b1 = submitter1.submit(
         (|a:i32|{println!("task='B1': recv (a:{a}) and [{a}] => task='add'");a})
-        .into_task().to((id_add, Pi::PI0).into())
+        .into_task().to(add.input_at::<0>())
     ).unwrap();
 
     // task B2
-    let id_b2 = submitter1.submit(
+    let b2 = submitter1.submit(
         (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}]=> task='add'");a})
-        .into_task().to((id_add, Pi::PI1).into())
+        .into_task().to(add.input_at::<1>())
     ).unwrap();
 
     // submitter2
 
     // task exit3
-    let id_exit3 = submitter2.submit(
+    let exit3 = submitter2.submit(
         (|_:usize| {println!("task='exit3': exit");})
         .into_exit_task()
     ).unwrap();
 
     // task count
-    let id_count = submitter2.submit(
+    let count = submitter2.submit(
         (|a:&str|{println!("task='count': (a:{a:?}) and [{}] => task='exit3'",a.len());a.len()})
-        .into_task().to((id_exit3, Pi::PI0).into())
+        .into_task().to(exit3.input_at::<0>())
     ).unwrap();
 
     // task A
     let _ = submitter2.submit(
         (||{println!("task='params': and pass [1,2,'123456789'] to task=['B1','B2','count']");1})
-            .into_task().fan_tuple_with(
-            move |_:i32| {
-                (
-                    (1,(id_b1,Pi::PI0).into()),
-                    (2,(id_b2,Pi::PI0).into()),
-                    ("123456789",(id_count,Pi::PI0).into()),
-                )
-            }
+        .into_task().fan_tuple_with(
+            move |_:i32| (1, 2, "123456789",)
         )
+        .all_to((b1.input_at(),b2.input_at(),count.input_at()))
     );
 }
 

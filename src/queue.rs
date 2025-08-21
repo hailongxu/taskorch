@@ -165,9 +165,9 @@ impl C1map {
             return None;
         }
         if cfg!(feature="log-trace") {
-            trace!("target task#{:?} received from task#{v_from:?}.cond#{:?}={{{v:?}}}", target_ca.taskid(),target_ca.pi());
+            trace!("target task{{{target_ca:?}}} received from task{{{v_from:?}}}={{{v:?}}}");
         } else {
-            debug!("target task#{:?} received from task#{v_from:?}.cond#{:?}", target_ca.taskid(),target_ca.pi());
+            debug!("target task{{{target_ca:?}}} received from task{{{v_from:?}}}");
         }
         Some(param.is_full())
     }
@@ -224,8 +224,8 @@ macro_rules! when_tuple_comed_impl {
         impl< $($T:'static+Debug),+ > WhenTupleComed for (&($($T),+), &($(CondAddr<$T>),+)) {
             fn foreach(&self, id_from:&TaskId, c1map: C1map, q: (usize,Queue)) {
                 $(
-                    debug!("---type id:{:?} name:{:?}", TypeId::of::<$T>(),type_name::<$T>());
-                    // when_ci_comed(&self.1.$i, (&self.0.$i,id_from), c1map.clone(), q.clone());
+                    // debug!("---type id:{:?} name:{:?}", TypeId::of::<$T>(),type_name::<$T>());
+                    when_ci_comed(&self.1.$i, (&self.0.$i,id_from), c1map.clone(), q.clone());
                 )+
             }
         }

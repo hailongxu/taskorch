@@ -1,6 +1,6 @@
 use crate::{
     curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
-        taskid_next, Task, TaskBuild, TaskCurrier, TaskId, TaskMap
+        taskid_next, PsOf, Task, TaskBuild, TaskCurrier, TaskId, TaskInf, TaskMap
     }, Queue
 };
 
@@ -11,7 +11,7 @@ pub enum TaskError {
     /// when submit task, if the id has already existed in waitQueue.
     TaskIdAlreadyExists(TaskId),
 }
-type SummitResult = Result<TaskId,TaskError>;
+type SummitResult<Ps> = Result<TaskInf<Ps>,TaskError>;
 
 /// Handles task submission to a specific queue
 #[derive(Clone)]
@@ -60,11 +60,12 @@ impl TaskSubmitter {
     /// * or else return Ok(TaskId)
     /// 
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskBuild{task,map:TaskMap(mapfn),tofn,..}:TaskBuild<C,MapFn,MapFn::R,ToFn>)->SummitResult
+    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskBuild{task,map:TaskMap(mapfn),tofn,..}:TaskBuild<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
         C::R: 'static + Debug,
+        C: PsOf,
 
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
         MapFn::Pt: From<(<C as CallOnce>::R,)>,
@@ -139,7 +140,7 @@ impl TaskSubmitter {
             let postdo = Box::new(mk_postdo(taskid));
             self.queue.add_boxtask(task,postdo);
             debug!("task#{:?} added into Q#{}", taskid, self.qid);
-            Ok(taskid)
+            Ok(TaskInf::new(taskid))
         } else { // with parameters
             let mut task = task;
             if task.id.0.is_none() { task.id = taskid_next(); } // @A, ensure, the task.id is nonzero.
@@ -153,7 +154,7 @@ impl TaskSubmitter {
             if id.is_some() {
                 debug_assert_eq!(Some(taskid),id);
                 debug!("cond-task#{taskid:?} added into waitQueue");
-                Ok(TaskId(id))
+                Ok(TaskInf::new(TaskId(id)))
             } else {
                 error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
                 Err(TaskError::TaskIdAlreadyExists(TaskId(id)))

@@ -19,10 +19,7 @@
 //! 
 
 use std::{
-    any::Any,
-    marker::PhantomData,
-    sync::atomic::{AtomicUsize, Ordering},
-    num::NonZeroUsize,
+    any::{type_name, Any}, fmt::Debug, marker::PhantomData, num::NonZeroUsize, sync::atomic::{AtomicUsize, Ordering}
 };
 
 use crate::{curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
@@ -69,7 +66,26 @@ pub fn taskid_next()->TaskId {
     TASKID.next()
 }
 
+pub struct TaskInf<Ps> {
+    taskid: TaskId,
+    _phantom: PhantomData<Ps>,
+}
 
+impl<Ps> TaskInf<Ps> {
+    pub(crate) const fn new(taskid:TaskId)->Self {
+        Self { taskid, _phantom:PhantomData }
+    }
+    pub const fn taskid(&self)->TaskId {
+        self.taskid
+    }
+}
+
+impl<Ps> TaskInf<Ps> {
+    pub fn input_at<const I:u8>(&self)->CondAddr<Ps::T>
+    where Ps:TupleAt<I> {
+        CondAddr(self.taskid, Pi::const_new::<I>())
+    }
+}
 
 /// TaskId
 /// the unique id of a pool instance system
@@ -213,7 +229,7 @@ fn test_tid() {
 /// let pi = Pi::from(2); // equivalent Pi::P2
 /// let pi = 2.into(); // equivalent Pi::P2
 /// ```
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 #[repr(transparent)]
 pub struct Pi<T>(pub(crate) u8,PhantomData<T>);
 impl<T> Pi<T> {
@@ -250,13 +266,20 @@ impl<T> From<Pi<T>> for u8 {
     }
 }
 
+impl<T> Debug for Pi<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Pi<{name}>({:?})", &self.0, name=type_name::<T>())
+        // f.debug_tuple("Pi").field(&self.0).field(&type_name::<T>()).finish()
+    }
+}
+
 /// Cond Addr
 /// Represents the position where a condition occurs — specifically, the position of a parameter.
 ///
 /// This is determined by a combination of the task ID and zero-based condition index,
 /// which together uniquely identify where the parameter is located in the system.
 // #[derive(Clone, Copy)]
-#[derive(Debug,PartialEq)]
+#[derive(PartialEq)]
 pub struct CondAddr<T>(TaskId,Pi<T>);
     // where Pi<T>: Copy;
 impl<T> CondAddr<T> {
@@ -294,6 +317,13 @@ impl<T> Default for CondAddr<T> {
 impl<T> From<(TaskId,Pi<T>)> for CondAddr<T> {
     fn from((tid,pi): (TaskId,Pi<T>)) -> Self {
         Self(tid, pi)
+    }
+}
+
+impl<T> Debug for CondAddr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"CA<{name}>({:?},Pi({:?}))",&self.0,&self.1.i(),name=type_name::<T>())
+        // f.debug_tuple("CondAddr").field(&self.0).field(&self.1).finish()
     }
 }
 
@@ -553,6 +583,16 @@ impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     {
         CondAddr(self.id(), Pi::from(I))
     }
+}
+
+// just for keep the origin type of task input
+// TODO: maybe will be merged into CallOnce, at present, use this
+pub trait PsOf {
+    type InputPs;
+}
+
+impl<F,C:TupleOpt,R> PsOf for Currier<F,C,R> {
+    type InputPs = C;
 }
 
 

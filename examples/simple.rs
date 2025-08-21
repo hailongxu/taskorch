@@ -1,4 +1,4 @@
-use taskorch::{Pi, Pool, Queue, TaskBuildNew};
+use taskorch::{Pool, Queue, TaskBuildNew};
 // [A]      => [B1, B2] ## 1->N
 // [B1, B2] => [Exit]   ## N->1
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
     let _ = submitter.submit(task);
 
     // an exit task with cond(#0 i32, #2 str)
-    let id_exit = submitter.submit(
+    let exit = submitter.submit(
         (|a:i32,msg:&str|
             println!("task='exit': received ({a},{msg:?}) and EXIT")
         ).into_exit_task()
@@ -26,26 +26,25 @@ fn main() {
 
     // N->1 : pass i32 to exit-task.p0
     let b1 = (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
-        .into_task();
-    let b1 = b1.to((id_exit, Pi::PI0).into());
-    let id_b1 = submitter.submit(b1).unwrap();
+        .into_task()
+        .to(exit.input_at::<0>());
+    let b1 = submitter.submit(b1).unwrap();
 
     // N->1 : pass str to exit task.p1
     let b2 = (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
         .into_task()
-        .to((id_exit, Pi::PI1).into());
-    let id_b2 = submitter.submit(b2).unwrap();
+        .to(exit.input_at::<1>());
+    let b2 = submitter.submit(b2).unwrap();
 
     // 1->N : map result to task-b1 and task-b2
-    let id_b3 = (||3).into_task();
-    let id_b3 = id_b3
+    let b3 = (||3)
+        .into_task()
         .fan_tuple_with(move|a: i32|{
             println!("task='A': fan to task=['B1','B2']");
             (a,"exit")
-            // ((a,(id_b1,Pi::PI0).into()),("exit",(id_b2,Pi::PI0).into()))
         })
         .all_to((b1.input_at::<0>(),b2.input_at::<0>()));
-    let _ = submitter.submit(id_b3);
+    let _ = submitter.submit(b3);
 
     // Step#4. start a thread and run
     pool.spawn_thread_for(qid);
@@ -53,7 +52,3 @@ fn main() {
     // Step#5. wait until all finished
     pool.join();
 }
-
-
-// TaskBuild<Currier<impl Fn(i32) -> i32, (i32,), i32>, PassthroughMapFn<i32>, (i32,), OneToOne<(i32,)>>
-// TaskBuild<Currier<impl Fn(i32) -> i32, (i32,), i32>, impl Fndecl<(<Currier<impl Fn(i32) -> i32, (i32,), i32> as CallOnce>::R,), (<Currier<impl Fn(i32) -> i32, (i32,), i32> as CallOnce>::R,)>, (i32,), impl Fndecl<(&(<Currier<impl Fn(i32) -> i32, (i32,), i32> as CallOnce>::R,),), CondAddr<<Currier<impl Fn(i32) -> i32, (i32,), i32> as CallOnce>::R>>>

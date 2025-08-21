@@ -1,5 +1,5 @@
 
-use taskorch::{Pi, Pool, Queue, TaskBuildNew, TaskSubmitter};
+use taskorch::{Pool, Queue, TaskBuildNew, TaskSubmitter};
 
 // Thread 1: Task execution (consumer) role
 // Thread 2: Task generation (producer) role
@@ -44,7 +44,7 @@ fn produce_task(submitter:TaskSubmitter) {
         (|a:i32,b:i32|{
             println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
             a+b
-        }).into_task().to((id_exit,Pi::PI0).into())
+        }).into_task().to(id_exit.input_at::<0>())
     ).unwrap();
 
     prompt("params");
@@ -53,11 +53,13 @@ fn produce_task(submitter:TaskSubmitter) {
         .into_task()
         .fan_tuple_with(move|_:i32|
             (
-                (1, (id_add, Pi::PI0).into()), // to add.cond#0
-                (2, (id_add, Pi::PI1).into()), // to add.cond#1
-                // (2, Anchor(id_add, 1)), /// to add.cond#1, Error, if use '///' !!!!!
+                1,
+                2,
+                // (2) /// to add.cond#1, Error, if use '///' !!!!!
             )
-        ));
+        )
+        .all_to((id_add.input_at::<0>(),id_add.input_at::<1>()))
+    );
 }
 
 fn prompt(taskname:&'static str) {
