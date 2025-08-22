@@ -80,11 +80,11 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
                 debug!("task#{:?} is scheduled to run.",task.id());
                 let kind = task.kind();
                 let r = task.run();
-                if let Some(r) = r {
+                // if let Some(r) = r {
                     postdo(r);
-                }
+                // }
                 if let Kind::Exit = kind {
-                    warn!("received an exit message and prepare to exit.");
+                    warn!("current thread received an exit message and prepare to exit.");
                     break;
                 }
             } else {

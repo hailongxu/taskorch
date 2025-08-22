@@ -417,3 +417,49 @@ mod test {
         // get(|_:i32|9,(8,));
     }
 }
+
+#[test]
+fn test_type_check() {
+    use std::marker::PhantomData;
+
+    struct TypeChecker<T> {
+        _marker: PhantomData<T>,
+    }
+
+    impl<T> TypeChecker<T> {
+        const IS_UNIT: bool = std::mem::size_of::<T>() == std::mem::size_of::<()>()
+            && std::mem::align_of::<T>() == std::mem::align_of::<()>();
+    }
+
+    struct AA;
+    struct BB;
+    println!("i32 is i32: {}", TypeChecker::<AA>::IS_UNIT);    // true
+    println!("f64 is i32: {}", TypeChecker::<f64>::IS_UNIT);    // false
+
+    struct IsType<A,B> {
+        a: PhantomData<A>,
+        b: PhantomData<B>,
+    }
+
+    impl<A,B> IsType<A,B>  {
+        // add the fellowed line to the top of file, in unstable rust version.
+        #![feature(specialization)]
+        #[cfg(false)]
+        default const SAME: bool = false;
+    }
+    impl<T> IsType<T,T>  {
+        const SAME: bool = true;
+    }
+
+    println!("i32,i32 :{}",IsType::<i32,i32>::SAME/*,IsType::<i32,i32>::SAME1*/);
+    // error `SAME` does not exist under IsType::<i32,u32>
+    #[cfg(false)]
+    println!("i32,u32 :{} {}",IsType::<i32,u32>::SAME,IsType::<i32,i32>::SAME1);
+
+    fn is_same_type<A:'static,B:'static>() -> bool {
+        std::any::TypeId::of::<A>() == std::any::TypeId::of::<B>()
+    }
+
+    assert!(is_same_type::<(),()>());
+    assert!(!is_same_type::<(),AA>());
+}

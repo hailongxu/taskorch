@@ -330,7 +330,9 @@ impl<T> Debug for CondAddr<T> {
 
 pub(crate) trait Task
 {
-    fn run(self:Box<Self>)->Option<Box<dyn Any>>;
+    /// returns
+    /// None: return nothing means `()`
+    fn run(self:Box<Self>)->Box<dyn Any>;
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
     fn kind(&self)->Kind;
     fn id(&self)->TaskId;
@@ -351,13 +353,14 @@ impl<T> Task for TaskCurrier<T>
     T: CallOnce,
     T::R: 'static,
 {
-    fn run(self:Box<Self>)->Option<Box<dyn Any>> {
+    fn run(self:Box<Self>)->Box<dyn Any> {
         let r = self.currier.call_once();
-        if std::mem::size_of::<T::R>() == 0 {
-            None
-        } else {
-            Some(Box::new(r))
-        }
+        Box::new(r)
+        // if std::any::TypeId::of::<T::R>() == std::any::TypeId::of::<()>() {
+        //     TaskResult::Void
+        // } else {
+        //     TaskResult::DynAny(Box::new(r))
+        // }
     }
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         self.currier.as_param_mut()
@@ -1200,7 +1203,7 @@ fn test_task_run() {
         e.set(6, &tp7) && 
         e.set(7, &tp8)
     );
-    let r = c8.run().unwrap();
+    let r = c8.run();
     let r = r.downcast::<i32>().unwrap();
     assert_eq!(*r, tr8);
 }

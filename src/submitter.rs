@@ -59,6 +59,9 @@ impl TaskSubmitter {
     /// * here, return Ok(TaskId::NONE)
     /// * or else return Ok(TaskId)
     /// 
+    /// 
+    // TODO next: Optimize postdo: if no taskmap and no tofn, set Option<postdo> to None
+    // instead of always invoking it indiscriminately. (the present)
     #[allow(private_bounds)]
     pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskBuild{task,map:TaskMap(mapfn),tofn,..}:TaskBuild<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
         where

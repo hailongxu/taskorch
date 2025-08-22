@@ -37,11 +37,11 @@ fn main() {
     let b2 = submitter.submit(b2).unwrap();
 
     // 1->N : map result to task-b1 and task-b2
-    let b3 = (||3)
+    let b3 = (||())
         .into_task()
-        .fan_tuple_with(move|a: i32|{
+        .fan_tuple_with(move|_: ()|{
             println!("task='A': fan to task=['B1','B2']");
-            (a,"exit")
+            (10,"exit")
         })
         .all_to((b1.input_at::<0>(),b2.input_at::<0>()));
     let _ = submitter.submit(b3);
