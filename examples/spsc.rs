@@ -51,13 +51,7 @@ fn produce_task(submitter:TaskSubmitter) {
     let _ = submitter.submit(
         (||{println!("consume task='params': pass (1, 2) to task='add'");1},10.into())
         .into_task()
-        .fan_tuple_with(move|_:i32|
-            (
-                1,
-                2,
-                // (2) /// to add.cond#1, Error, if use '///' !!!!!
-            )
-        )
+        .fan_tuple_with(move|_:i32| (1,2))
         .all_to((id_add.input_at::<0>(),id_add.input_at::<1>()))
     );
 }

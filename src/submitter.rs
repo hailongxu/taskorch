@@ -1,6 +1,6 @@
 use crate::{
     curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
-        taskid_next, PsOf, Task, TaskBuild, TaskCurrier, TaskId, TaskInf, TaskMap
+        taskid_next, PsOf, Task, TaskCurrier, TaskId, TaskInf, TaskMap, TaskNeed
     }, Queue
 };
 
@@ -52,7 +52,7 @@ impl TaskSubmitter {
     /// * `map` - Mapping function for processing and forwarding the task result
     /// 
     /// # returns
-    /// * `Result<Option<TaskId>,String>` - The ID of the task
+    /// * `SummitResult` - TaskInf or TaskError
     /// 
     /// * if taskid has already existed, return Error
     /// * if the task has no params and you donot fill an explicit taskid, 
@@ -63,7 +63,7 @@ impl TaskSubmitter {
     // TODO next: Optimize postdo: if no taskmap and no tofn, set Option<postdo> to None
     // instead of always invoking it indiscriminately. (the present)
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskBuild{task,map:TaskMap(mapfn),tofn,..}:TaskBuild<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
+    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskNeed{task,map:TaskMap(mapfn),tofn,..}:TaskNeed<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -160,7 +160,7 @@ impl TaskSubmitter {
                 Ok(TaskInf::new(TaskId(id)))
             } else {
                 error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
-                Err(TaskError::TaskIdAlreadyExists(TaskId(id)))
+                Err(TaskError::TaskIdAlreadyExists(TaskId(Some(taskid))))
             }
         }
         // Ok(TaskId::NONE)
@@ -171,28 +171,45 @@ impl TaskSubmitter {
         note = "Use `submit()` instead for strict type check. \
                `old_submit()` will be removed in next release."
     )]
-    #[cfg(false)]
     #[allow(private_bounds)]
-    pub fn old_submit<C,MapFn,MapR,ToFn>(&self,taskbuild:TaskBuild<C,MapFn,MapFn::R,ToFn>)->TaskId
+    pub fn old_submit<C,MapFn,MapR,ToFn>(&self,taskneed:TaskNeed<C,MapFn,MapFn::R,ToFn>)->TaskId
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
         C::R: 'static + Debug,
+        C: PsOf,
+
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
         MapFn::Pt: From<(<C as CallOnce>::R,)>,
         MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
-        MapFn::R: TupleCondAddr,
+        MapFn::R: TupleCondAddr + Clone,
+
         ToFn: Send + 'static,
         for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
-        for<'b> <ToFn as Fndecl<(&'b MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'b MapFn::R,)>,
-        for<'c> <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: Identical<(&'c MapFn::R,)>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'a MapFn::R,)>,
         for<'d,'e> (
-            &'d MapFn::R, 
-            &'e <ToFn as Fndecl<(&'d MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>>::R
-            ): WhenTupleComed,
-            // here if we use 'd to substitue the 'e, the error occurs. ???
+            &'d MapFn::R,
+            &'e <MapFn::R as TupleCondAddr>::Cat,
+            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
+        ): WhenTupleComed,
+        // here up if we use 'd to substitue the 'e, the error occurs. ???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat:
+            // if subsitue the 2nd 'a with 'b, will lead to error???
+            From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R> +
+            Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
     {
-        self.submit(taskbuild).unwrap()
+        self.submit(taskneed).unwrap().taskid()
+    }
+}
+
+#[cfg(test)]
+impl TaskSubmitter {
+    fn test_new() -> Self {
+        Self {
+            qid: 1,
+            queue: Queue::new(),
+            c1map: C1map::new(),
+        }
     }
 }
 
@@ -210,11 +227,28 @@ fn test_conv() {
 }
 
 #[test]
-fn test_submmit() {
+fn test_submmit_construct() {
     use crate::task::TaskBuildNew;
     use crate::curry::Currier;
     use crate::task::PassthroughMapFn;
     use crate::task::OneToOne;
-    let task: TaskBuild<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>> = (||println!("task='free':  Hello, 1 2 3 ..")).into_task();
+    let task: TaskNeed<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>> = (||println!("task='free':  Hello, 1 2 3 .."),TaskId::from(1)).into_task();
     println!("task type={:?}", std::any::type_name_of_val(&task));
+}
+
+#[test]
+fn test_submmit() {
+    use crate::task::TaskBuildNew;
+    let s = TaskSubmitter::test_new();
+    let id1 = TaskId::new(1);
+    let task = (|_:i32|(),id1).into_task();
+    let task = s.submit(task);
+    assert!(task.is_ok_and(|a|a.taskid()==id1));
+
+    // repeat insert into task with same taskid, leading to an Err
+    let task = (|_:i8|(),id1).into_task();
+    let task = s.submit(task);
+    assert!(
+        task.is_err_and( |e| matches!( e, TaskError::TaskIdAlreadyExists(id) if {id==id1} ) )
+    );
 }

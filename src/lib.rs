@@ -19,7 +19,7 @@ pub use queue::{spawn_thread, Queue};
 pub use task::{
     CondAddr,TaskId,Pi,
     Kind,
-    TaskBuild,
+    TaskNeed,
     TaskBuildNew,TaskBuildOp,
     taskid_next,
 };

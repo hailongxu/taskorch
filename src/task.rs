@@ -66,6 +66,7 @@ pub fn taskid_next()->TaskId {
     TASKID.next()
 }
 
+#[derive(Debug)]
 pub struct TaskInf<Ps> {
     taskid: TaskId,
     _phantom: PhantomData<Ps>,
@@ -86,6 +87,12 @@ impl<Ps> TaskInf<Ps> {
         CondAddr(self.taskid, Pi::const_new::<I>())
     }
 }
+
+// impl<Ps> Debug for TaskInf<Ps> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f,"TaskInf{{{:?}}}",self.taskid())
+//     }
+// }
 
 /// TaskId
 /// the unique id of a pool instance system
@@ -373,7 +380,7 @@ impl<T> Task for TaskCurrier<T>
     }
 }
 
-pub struct TaskBuild<C,MapFn,MapR,ToFn>
+pub struct TaskNeed<C,MapFn,MapR,ToFn>
     where MapR: TupleCondAddr
 {
     pub(crate) task: TaskCurrier<C>,
@@ -382,7 +389,7 @@ pub struct TaskBuild<C,MapFn,MapR,ToFn>
     pub(crate) phantom: PhantomData<MapR>
 }
 
-impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskBuild<C,MapFn,MapR,ToFn> {
+impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskNeed<C,MapFn,MapR,ToFn> {
     /// get task id from task, only if the task has conds.
     pub fn id(&self)->TaskId {
         self.task.id
@@ -412,7 +419,7 @@ fn test_pass_through() {
     fn do_nothing() {}
     struct AA<F:Function>(F);
     impl<F:Function> AA<F> {
-        // how does we construct a AA???
+        // how does we construct a AA ???
         #[cfg(false)]
         fn test()->Self {
             let a = AA(do_nothing);
@@ -421,15 +428,15 @@ fn test_pass_through() {
         fn test2() {
             let a = AA(do_nothing);
             let AA(_f) = a;
-            // error
+            // error, in dev and compling
             #[cfg(false)]
             let a = Self(do_nothing);
         }
     }
 }
 
-// impl<Currier:CallOnce+RofCurrier> TaskBuild<Currier, PassthroughMapFn<Currier::Ret>,()>
-impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
+// impl<Currier:CallOnce+RofCurrier> TaskNeed<Currier, PassthroughMapFn<Currier::Ret>,()>
+impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     where
     TC: TupleOpt,
     R1:TupleCondAddr,
@@ -442,10 +449,10 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// * ca:`CondAddr` - the target cond place. target task identifier
     /// * `i` - cond #index (0-based)
     /// 
-    // pub fn old_to(self, taskid:usize, i:usize) -> TaskBuild<Currier, PassthroughMapFn<Currier::Ret>,()> {
+    // pub fn old_to(self, taskid:usize, i:usize) -> TaskNeed<Currier, PassthroughMapFn<Currier::Ret>,()> {
     // Tt: Target Type
     pub fn to<'a>(self, ca:CondAddr<R>)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,TC,R>,
             PassthroughMapFn<R>,
             (R,),
@@ -458,7 +465,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         let map  = TaskMap(PassthroughMapFn::<R>::NULL);
         let tofn = OneToOne::<(R,)>((ca,));
         // let tofn = move |_:&(R,)| ca;
-        TaskBuild {
+        TaskNeed {
             task: self.task,
             map,
             tofn,
@@ -471,9 +478,9 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         note = "Use `to()` instead for strict type check. \
                `old_to()` will be removed in next release."
     )]
-    // pub fn old_to(self, to: usize, pi: usize) -> TaskBuild<Currier, PassthroughMapFn<Currier::R>,(Currier::R,)>
+    // pub fn old_to(self, to: usize, pi: usize) -> TaskNeed<Currier, PassthroughMapFn<Currier::R>,(Currier::R,)>
     pub fn old_to<'a>(self, to: usize, pi: usize) 
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,TC,R>,
             PassthroughMapFn<R>,
             (R,),
@@ -489,7 +496,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     }
 }
 
-impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
+impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     where
     TC: TupleOpt,
     R1: TupleCondAddr,
@@ -539,7 +546,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     ///  )
     /// ```
     pub fn fan_tuple_with<'a,MapFn,MapR>(self, mapfn:MapFn)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,TC,R>,
             MapFn,
             // impl Fndecl<(R,),MapR>,
@@ -551,7 +558,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         MapR::Cat: Default,
         MapFn: Fndecl<(R,),MapR>,
     {
-        TaskBuild {
+        TaskNeed {
             task: self.task,
             map: TaskMap(mapfn),
             tofn: OneToOne::<MapR>::ONETOONE,
@@ -560,7 +567,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     }
 }
 
-impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
+impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     where
     TC: TupleOpt,
     R1: TupleCondAddr,
@@ -571,7 +578,7 @@ impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     }
 }
 
-impl<F,TC,R,MapFn1,R1> TaskBuild<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
+impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     where
     TC: TupleOpt,
     R1: TupleCondAddr,
@@ -602,7 +609,7 @@ impl<F,C:TupleOpt,R> PsOf for Currier<F,C,R> {
 /// TaskBuildOp provides target condaddr configuration.
 #[deprecated(
     since="0.3.0",
-    note = "Use `to()` directly, for this method has been integrated into the TaskBuild. \
+    note = "Use `to()` directly, for this method has been integrated into the TaskNeed. \
            trait `TaskBuildOp` actually do nothing and will be removed in next release."
 )]
 pub trait TaskBuildOp<Currier,R> {}
@@ -639,16 +646,16 @@ pub trait TaskBuildNew<C,F,R,T> {
     /// 
     /// # Returns
     /// 
-    /// - TaskBuild: including the necessaary info of a task, 
+    /// - TaskNeed: including the necessaary info of a task, 
     ///   just for preparetion of submition.
-    fn into_task(self)->TaskBuild<C,F,R,T> where R: TupleCondAddr;
+    fn into_task(self)->TaskNeed<C,F,R,T> where R: TupleCondAddr;
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_task()` instead for clearer ownership semantic. \
                `task()` will be removed in next release."
     )]
-    fn task(self)->TaskBuild<C,F,R,T> where Self:Sized, R: TupleCondAddr {
+    fn task(self)->TaskNeed<C,F,R,T> where Self:Sized, R: TupleCondAddr {
         self.into_task()
     }
 
@@ -656,14 +663,14 @@ pub trait TaskBuildNew<C,F,R,T> {
     /// # Note
     /// This is functionally identical to `into_task()`, with the additional behavior of thread exit gracefully
     /// after task completion.
-    fn into_exit_task(self)->TaskBuild<C,F,R,T> where R:TupleCondAddr;
+    fn into_exit_task(self)->TaskNeed<C,F,R,T> where R:TupleCondAddr;
 
     #[deprecated(
         since="0.2.0",
         note = "Use `into_exit_task()` instead for clearer ownership semantic. \
                `exit_task()` will be removed in next release."
     )]
-    fn exit_task(self)->TaskBuild<C,F,R,T> where Self:Sized, R:TupleCondAddr {
+    fn exit_task(self)->TaskNeed<C,F,R,T> where Self:Sized, R:TupleCondAddr {
         self.into_exit_task()
     }
 }
@@ -728,7 +735,7 @@ pub trait TaskBuildNew<C,F,R,T> {
 // }//////
 
 #[test]
-fn test_task_build_many() {
+fn test_task_build_fan_and_to() {
     let task = (||3).into_task();
     if true {
         task.fan_tuple_with(|_:i32| (3,));
@@ -775,7 +782,7 @@ impl<'a,Rtuple:TupleCondAddr> Fndecl<(&'a Rtuple,),Rtuple::Cat> for OneToOne<Rtu
 /// constructs a task without cond
 impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for F {
     fn into_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -784,7 +791,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self),
                 id: TaskId::NONE,
@@ -796,7 +803,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         }
     }
     fn into_exit_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -805,7 +812,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self),
                 id: TaskId::NONE,
@@ -820,7 +827,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
 
 impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for (F,TaskId) {
     fn into_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -829,7 +836,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self.0),
                 id: self.1,
@@ -841,7 +848,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         }
     }
     fn into_exit_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -850,7 +857,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self.0),
                 id: self.1,
@@ -867,7 +874,7 @@ impl<F:FnOnce()->R,R> TaskBuildNew<Currier<F,(),R>,PassthroughMapFn<R>,(R,),OneT
 // fn(P)->R
 impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for F {
     fn into_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(P1,),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -876,7 +883,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self),
                 id: TaskId::NONE,
@@ -888,7 +895,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(
         }
     }
     fn into_exit_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(P1,),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -897,7 +904,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self),
                 id: TaskId::NONE,
@@ -912,7 +919,7 @@ impl<F:FnOnce(P1)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(
 
 impl<F:FnOnce(P1,)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for (F,TaskId) {
     fn into_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(P1,),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -921,7 +928,7 @@ impl<F:FnOnce(P1,)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self.0),
                 id: self.1,
@@ -933,7 +940,7 @@ impl<F:FnOnce(P1,)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,
         }
     }
     fn into_exit_task(self)
-        -> TaskBuild<
+        -> TaskNeed<
             Currier<F,(P1,),R>,
             PassthroughMapFn<R>,
             (R,),
@@ -942,7 +949,7 @@ impl<F:FnOnce(P1,)->R,P1,R> TaskBuildNew<Currier<F,(P1,),R>,PassthroughMapFn<R>,
         where
         PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
     {
-        TaskBuild {
+        TaskNeed {
             task: TaskCurrier {
                 currier: Currier::from(self.0),
                 id: self.1,
@@ -960,7 +967,7 @@ macro_rules! impl_task_build_new {
     ($($P:ident),+) => {
         impl<F:FnOnce($($P),+)->R,$($P),+,R> TaskBuildNew<Currier<F,($($P),+),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for F {
             fn into_task(self)
-                -> TaskBuild<
+                -> TaskNeed<
                     Currier<F,($($P),+),R>,
                     PassthroughMapFn<R>,
                     (R,),
@@ -969,7 +976,7 @@ macro_rules! impl_task_build_new {
                 where
                 PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
             {
-                TaskBuild {
+                TaskNeed {
                     task: TaskCurrier {
                         currier: Currier::from(self),
                         id: TaskId::NONE,
@@ -981,7 +988,7 @@ macro_rules! impl_task_build_new {
                 }
             }
             fn into_exit_task(self)
-                -> TaskBuild<
+                -> TaskNeed<
                     Currier<F,($($P),+),R>,
                     PassthroughMapFn<R>,
                     (R,),
@@ -990,7 +997,7 @@ macro_rules! impl_task_build_new {
                 where
                 PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
             {
-                TaskBuild {
+                TaskNeed {
                     task: TaskCurrier {
                         currier: Currier::from(self),
                         id: TaskId::NONE,
@@ -1005,7 +1012,7 @@ macro_rules! impl_task_build_new {
 
         impl<F:FnOnce($($P),+)->R,$($P),+,R> TaskBuildNew<Currier<F,($($P),+),R>,PassthroughMapFn<R>,(R,),OneToOne<(R,)>> for (F,TaskId) {
             fn into_task(self)
-                -> TaskBuild<
+                -> TaskNeed<
                     Currier<F,($($P),+),R>,
                     PassthroughMapFn<R>,
                     (R,),
@@ -1014,7 +1021,7 @@ macro_rules! impl_task_build_new {
                 where
                 PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
             {
-                TaskBuild {
+                TaskNeed {
                     task: TaskCurrier {
                         currier: Currier::from(self.0),
                         id: self.1,
@@ -1026,7 +1033,7 @@ macro_rules! impl_task_build_new {
                 }
             }
             fn into_exit_task(self)
-                -> TaskBuild<
+                -> TaskNeed<
                     Currier<F,($($P),+),R>,
                     PassthroughMapFn<R>,
                     (R,),
@@ -1035,7 +1042,7 @@ macro_rules! impl_task_build_new {
                 where
                 PassthroughMapFn<R>: Fndecl<(R,),(R,)>,
             {
-                TaskBuild {
+                TaskNeed {
                     task: TaskCurrier {
                         currier: Currier::from(self.0),
                         id: self.1,
@@ -1054,8 +1061,8 @@ macro_rules! impl_task_build_new {
 
 
         // impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>,PassthroughMapFn<R>,()> for F {
-        //     fn into_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskBuild (
+        //     fn into_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
+        //         TaskNeed (
         //             TaskCurrier {
         //                 currier: Currier::from(self),
         //                 id: TaskId::NONE,
@@ -1065,8 +1072,8 @@ macro_rules! impl_task_build_new {
         //         )
         //     }
             
-        //     fn into_exit_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskBuild (
+        //     fn into_exit_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
+        //         TaskNeed (
         //             TaskCurrier {
         //                 currier: Currier::from(self),
         //                 id: TaskId::NONE,
@@ -1079,8 +1086,8 @@ macro_rules! impl_task_build_new {
 
 
         // impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> for (F, TaskId) {
-        //     fn into_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskBuild (
+        //     fn into_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
+        //         TaskNeed (
         //             TaskCurrier {
         //                 currier: Currier::from(self.0),
         //                 id: self.1,
@@ -1090,8 +1097,8 @@ macro_rules! impl_task_build_new {
         //         )
         //     }
             
-        //     fn into_exit_task(self) -> TaskBuild<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskBuild (
+        //     fn into_exit_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
+        //         TaskNeed (
         //             TaskCurrier {
         //                 currier: Currier::from(self.0),
         //                 id: self.1,
