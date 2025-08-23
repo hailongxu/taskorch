@@ -1,6 +1,5 @@
-use std::marker::PhantomData;
 
-use crate::{CondAddr, Pi, TaskId};
+use crate::cond::CondAddr;
 
 
 
@@ -287,6 +286,7 @@ impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6,6 T7,7 T8);
 
 #[test]
 fn test_condaddr() {
+    use crate::cond::{TaskId,Pi};
     let addr = <(i32, u32) as TupleCondAddr>::ONETOONE;
     assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Pi::PI0)));
     assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Pi::PI1)));

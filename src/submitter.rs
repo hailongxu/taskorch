@@ -1,16 +1,45 @@
 use crate::{
-    curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
-        taskid_next, PsOf, Task, TaskCurrier, TaskId, TaskInf, TaskMap, TaskNeed
+    cond::{TaskId,CondAddr, Pi}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
+        taskid_next, PsOf, Task, TaskCurrier, TaskMap, TaskNeed
     }, Queue
 };
 
-use std::{any::{Any, TypeId}, fmt::Debug};
+use std::{any::{Any, TypeId}, fmt::Debug, marker::PhantomData};
 
 #[derive(Debug)]
 pub enum TaskError {
     /// when submit task, if the id has already existed in waitQueue.
     TaskIdAlreadyExists(TaskId),
 }
+
+#[derive(Debug)]
+pub struct TaskInf<Ps> {
+    taskid: TaskId,
+    _phantom: PhantomData<Ps>,
+}
+
+impl<Ps> TaskInf<Ps> {
+    pub(crate) const fn new(taskid:TaskId)->Self {
+        Self { taskid, _phantom:PhantomData }
+    }
+    pub const fn taskid(&self)->TaskId {
+        self.taskid
+    }
+}
+
+impl<Ps> TaskInf<Ps> {
+    pub fn input_at<const I:u8>(&self)->CondAddr<Ps::T>
+    where Ps:TupleAt<I> {
+        CondAddr::from((self.taskid, Pi::const_new::<I>()))
+    }
+}
+
+// impl<Ps> Debug for TaskInf<Ps> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f,"TaskInf{{{:?}}}",self.taskid())
+//     }
+// }
+
 type SummitResult<Ps> = Result<TaskInf<Ps>,TaskError>;
 
 /// Handles task submission to a specific queue

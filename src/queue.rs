@@ -1,10 +1,11 @@
 use std::{
-    any::{type_name, Any, TypeId}, collections::{HashMap, VecDeque}, fmt::Debug, num::NonZeroUsize, sync::{
+    any::{type_name, Any}, collections::{HashMap, VecDeque}, fmt::Debug, num::NonZeroUsize, sync::{
         atomic::{AtomicBool, Ordering}, Arc, Condvar, Mutex
     }, thread
 };
 
-use crate::{task::{CondAddr, Kind, Task, TaskId}, Jhandle};
+use crate::cond::{CondAddr,TaskId};
+use crate::{task::{Kind, Task}, Jhandle};
 
 // enum InsertError {
 //     /// task is must not be null
@@ -258,7 +259,7 @@ when_tuple_comed_impl!(0 T1, 1 T2, 2 T3, 3 T4, 4 T5, 5 T6, 6 T7, 7 T8);
 
 #[test]
 fn test_when_tuple_comed() {
-    use crate::task::TaskId;
+    use crate::cond::TaskId;
     use crate::queue::{C1map, Queue};
     use std::num::NonZeroUsize;
 

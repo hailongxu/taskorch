@@ -9,15 +9,20 @@ use std::{
 #[macro_use]
 mod log;
 
+mod cond;
 mod meta;
 mod curry;
 mod queue;
 pub mod task;
 mod submitter;
+
+pub use cond::{
+    CondAddr,TaskId,Pi,
+};
+
 use queue::C1map;
 pub use queue::{spawn_thread, Queue};
 pub use task::{
-    CondAddr,TaskId,Pi,
     Kind,
     TaskNeed,
     TaskBuildNew,TaskBuildOp,
