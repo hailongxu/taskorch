@@ -17,7 +17,7 @@ pub mod task;
 mod submitter;
 
 pub use cond::{
-    CondAddr,TaskId,Pi,
+    CondAddr,TaskId,ArgIdx,
 };
 
 use queue::C1map;

@@ -41,7 +41,7 @@ use std::{
     any::Any, marker::PhantomData, sync::atomic::{AtomicUsize, Ordering}
 };
 
-use crate::{cond::{CondAddr, Pi, TaskId}, curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
+use crate::{cond::{ArgIdx, CondAddr, Place::Input, TaskId}, curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
 use crate::meta::Fndecl;
 
 
@@ -242,7 +242,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         if pi > u8::MAX as usize {
             error!("The index of cond#{pi} is too large, shoul be <= {}.",u8::MAX);
         }
-        self.to(CondAddr::from((TaskId::from(to), Pi::from(pi as u8))))
+        self.to(CondAddr::from((TaskId::from(to), Input, ArgIdx::from(pi as u8))))
     }
 }
 
@@ -305,7 +305,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         >
         where
         MapR: TupleCondAddr,
-        MapR::Cat: Default,
+        MapR::TCA: Default,
         MapFn: Fndecl<(R,),MapR>,
     {
         TaskNeed {
@@ -322,7 +322,7 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    pub fn all_to(mut self, cat: R1::Cat)->Self {
+    pub fn all_to(mut self, cat: R1::TCA)->Self {
         self.tofn.0 = cat;
         self
     }
@@ -333,15 +333,16 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    pub fn input_at<const I:u8>(&self)->CondAddr<TC::T>
+    pub fn input_at<const I:u8>(&self)->CondAddr<TC::EleT>
         where TC: TupleAt<I>
     {
-        CondAddr::from((self.id(), Pi::from(I)))
+        CondAddr::from((self.id(), Input, ArgIdx::from(I)))
     }
-    pub fn output_at<const I:u8>(&self)->CondAddr<R1::T>
+    pub fn output_at<const I:u8>(&self)->CondAddr<R1::EleT>
         where R1: TupleAt<I>
     {
-        CondAddr::from((self.id(), Pi::from(I)))
+        use crate::cond::Place;
+        CondAddr::from((self.id(), Place::Output, ArgIdx::from(I)))
     }
 }
 
@@ -490,13 +491,13 @@ fn test_task_build_fan_and_to() {
     if true {
         task.fan_tuple_with(|_:i32| (3,));
     } else {
-        task.to(CondAddr::from((TaskId::from(3),Pi::<i32>::PI0)));
+        task.to(CondAddr::from((TaskId::from(3),Input, ArgIdx::<i32>::AI0)));
     }
 
     let task = (||{}).into_task();
     match 0 {
         0 => {task.fan_tuple_with(|_:()| (3,) ); }
-        1 => {task.to(CondAddr::from((TaskId::from(3),Pi::PI0))); }
+        1 => {task.to(CondAddr::from((TaskId::from(3),Input, ArgIdx::AI0))); }
         2 => {task.old_to(1,2); }
         _ => {}
     }
@@ -517,14 +518,14 @@ impl<P> Fndecl<(P,),(P,)> for PassthroughMapFn<P> {
         ps
     }
 }
-pub struct OneToOne<Rtuple:TupleCondAddr>(Rtuple::Cat);
+pub struct OneToOne<Rtuple:TupleCondAddr>(Rtuple::TCA);
 impl<P:TupleCondAddr> OneToOne<P>
 {
     const ONETOONE:Self = Self(P::ONETOONE);
 }
-impl<'a,Rtuple:TupleCondAddr> Fndecl<(&'a Rtuple,),Rtuple::Cat> for OneToOne<Rtuple> {
+impl<'a,Rtuple:TupleCondAddr> Fndecl<(&'a Rtuple,),Rtuple::TCA> for OneToOne<Rtuple> {
     type Pt = (&'a Rtuple,);
-    type R = Rtuple::Cat;
+    type R = Rtuple::TCA;
     fn call(self,_ps:Self::Pt)->Self::R {
         self.0
     }

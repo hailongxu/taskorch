@@ -51,41 +51,11 @@ pub struct TaskId(pub(crate) Option<NonZeroUsize>);
 impl TaskId {
     pub(crate) const NONE : Self = Self(None);
 
-    /// Construct a TaskId from usize
-    ///
-    /// # Behavior
-    /// - For non-zero IDs: Always succeeds
-    /// - For zero ID:
-    ///   - In debug mode: panics immediately
-    ///   - In release mode: logs warning but returns `TaskId::NONE`
-    /// 
-    /// Examples:
-    /// ```rust
-    /// # use taskorch::task::TaskId; 
-    /// let taskid = TaskId::new(1); // ok
-    /// ```
-    /// Donot try to explictly construct `TaskId` from `0`.
-    /// Debug mode panic example (only compiles in debug):
-    /// ```should_panic
-    /// # use taskorch::cond::TaskId;
-    /// TaskId::new(0); // panics in debug
-    /// ```
-    ///
-    /// Release mode behavior demonstration:
-    /// ```no_run
-    /// # use taskorch::task::TaskId;
-    /// let _ = TaskId::new(0); // would log warning in release
-    /// ```
+
+    /// Construct a TaskId from usize，just use in self crate, not expose it.
+    /// and does not output any message.
     #[inline]
-    pub fn new(id:usize)->Self {
-        #[cfg(debug_assertions)]
-        if id == 0 {
-            panic!("TaskId cannot be zero");
-        }
-        #[cfg(not(debug_assertions))]
-        if crate::log::LEVEL as usize >= crate::log::Level::Warn as usize && id == 0 {
-            warn!("TaskId::new() the input id is zero, is not avaiable!");
-        }
+    pub(crate) const fn new(id:usize)->Self {
         Self(NonZeroUsize::new(id))
     }
 
@@ -100,8 +70,40 @@ impl TaskId {
 }
 
 /// construct a `TaskId` from a `usize`
+///
+/// # Behavior
+/// - For non-zero IDs: Always succeeds
+/// - For zero ID:
+///   - In debug mode: panics immediately
+///   - In release mode: logs warning but returns `TaskId::NONE`
+/// 
+/// Examples:
+/// ```rust
+/// # use taskorch::task::TaskId; 
+/// let taskid = TaskId::from(1); // ok
+/// ```
+/// Donot try to explictly construct `TaskId` from `0`.
+/// Debug mode panic example (only compiles in debug):
+/// ```should_panic
+/// # use taskorch::cond::TaskId;
+/// TaskId::from(0); // panics in debug
+/// ```
+///
+/// Release mode behavior demonstration:
+/// ```no_run
+/// # use taskorch::task::TaskId;
+/// let _ = TaskId::from(0); // would log warning in release
+/// ```
 impl From<usize> for TaskId {
     fn from(id: usize) -> Self {
+        #[cfg(debug_assertions)]
+        if id == 0 {
+            panic!("TaskId cannot be zero");
+        }
+        #[cfg(not(debug_assertions))]
+        if crate::log::LEVEL as usize >= crate::log::Level::Warn as usize && id == 0 {
+            warn!("TaskId::new() the input id is zero, is not avaiable!");
+        }
         Self::new(id)
     }
 }
@@ -172,47 +174,67 @@ fn test_tid() {
 /// ```
 #[derive(Copy, Clone, PartialEq)]
 #[repr(transparent)]
-pub struct Pi<T>(pub(crate) u8,PhantomData<T>);
-impl<T> Pi<T> {
-    pub const PI0:Pi<T> = Pi(0,PhantomData);
-    pub const PI1:Pi<T> = Pi(1,PhantomData);
-    pub const PI2:Pi<T> = Pi(2,PhantomData);
-    pub const PI3:Pi<T> = Pi(3,PhantomData);
-    pub const PI4:Pi<T> = Pi(4,PhantomData);
-    pub const PI5:Pi<T> = Pi(5,PhantomData);
-    pub const PI6:Pi<T> = Pi(6,PhantomData);
-    pub const PI7:Pi<T> = Pi(7,PhantomData);
-    pub const PI8:Pi<T> = Pi(8,PhantomData);
-    const  PINONE:Pi<T> = Pi(u8::MAX,PhantomData);
+pub struct ArgIdx<T>(pub(crate) u8,PhantomData<T>);
+impl<T> ArgIdx<T> {
+    pub const AI0:ArgIdx<T> = ArgIdx(0,PhantomData);
+    pub const AI1:ArgIdx<T> = ArgIdx(1,PhantomData);
+    pub const AI2:ArgIdx<T> = ArgIdx(2,PhantomData);
+    pub const AI3:ArgIdx<T> = ArgIdx(3,PhantomData);
+    pub const AI4:ArgIdx<T> = ArgIdx(4,PhantomData);
+    pub const AI5:ArgIdx<T> = ArgIdx(5,PhantomData);
+    pub const AI6:ArgIdx<T> = ArgIdx(6,PhantomData);
+    pub const AI7:ArgIdx<T> = ArgIdx(7,PhantomData);
+    pub const AI8:ArgIdx<T> = ArgIdx(8,PhantomData);
+    const  AINONE:ArgIdx<T> = ArgIdx(u8::MAX,PhantomData);
 
     pub(crate) const fn const_new<const i:u8>() -> Self {
-        Pi(i,PhantomData)
+        ArgIdx(i,PhantomData)
     }
 }
-impl<T> Pi<T> {
-    const fn i(&self)->u8 {
+impl<T> ArgIdx<T> {
+    pub(crate) const fn i(&self)->u8 {
         self.0
     }
 }
-impl<T> From<u8> for Pi<T> {
+impl<T> From<u8> for ArgIdx<T> {
     #[inline]
     fn from(pi: u8) -> Self {
         Self(pi,PhantomData)
     }
 }
-impl<T> From<Pi<T>> for u8 {
+impl<T> From<ArgIdx<T>> for u8 {
     #[inline]
-    fn from(pi: Pi<T>) -> Self {
+    fn from(pi: ArgIdx<T>) -> Self {
         pi.0
     }
 }
 
-impl<T> Debug for Pi<T> {
+impl<T> Debug for ArgIdx<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Pi<{name}>({:?})", &self.0, name=type_name::<T>())
+        write!(f, "Arg<{name}>({:?})", &self.0, name=type_name::<T>())
         // f.debug_tuple("Pi").field(&self.0).field(&type_name::<T>()).finish()
     }
 }
+
+/// added the position property for Arg
+/// at input/output/inner.
+
+#[derive(PartialEq,Debug)]
+pub(crate) enum Place {
+    Input,
+    Output,
+}
+
+// impl<T> Debug for Place<T> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Self::Input(arg0) =>
+//                 f.write_fmt(format_args!("Input<>({})",arg0.i())),
+//             Self::Output(arg0) =>
+//                 f.write_fmt(format_args!("Output<>({})",arg0.i())),
+//         }
+//     }
+// }
 
 /// Cond Addr
 /// Represents the position where a condition occurs — specifically, the position of a parameter.
@@ -221,49 +243,75 @@ impl<T> Debug for Pi<T> {
 /// which together uniquely identify where the parameter is located in the system.
 // #[derive(Clone, Copy)]
 #[derive(PartialEq)]
-pub struct CondAddr<T>(TaskId,Pi<T>);
-    // where Pi<T>: Copy;
+pub struct CondAddr<T>{
+    taskid: TaskId,
+    place: Place,
+    arg: ArgIdx<T>
+}
+
 impl<T> CondAddr<T> {
-    pub const NONE: Self = Self(TaskId::NONE,Pi::PINONE);
-    pub(crate) const fn const_new<const i:u8>()->Self {
-        Self(TaskId::NONE, Pi::const_new::<i>())
+    pub const NONE: Self = Self {
+        taskid:TaskId::NONE,
+        place: Place::Input,
+        arg: ArgIdx::AINONE,
+    };
+    pub(crate) const fn new<const i:u8>()->Self {
+        Self {
+            taskid: TaskId::NONE,
+            place: Place::Input,
+            arg: ArgIdx::const_new::<i>(),
+        }
     }
 }
+
 impl<T> CondAddr<T> {
     #[inline]
     pub const fn taskid(&self)->TaskId {
-        self.0
+        self.taskid
     }
     #[inline]
-    pub const fn pi(&self)->&Pi<T> {
-        &self.1
+    pub const fn place(&self)->&Place {
+        &self.place
     }
     #[inline]
-    pub fn set(&mut self, id:TaskId, i:Pi<T>) {
-        self.0 = id;
-        self.1 = i;
+    pub const fn argi(&self)->&ArgIdx<T> {
+        &self.arg
+    }
+    #[inline]
+    pub fn set(&mut self, id:TaskId, place: Place, i:ArgIdx<T>) {
+        self.taskid = id;
+        self.place = place;
+        self.arg = i;
     }
     #[inline]
     pub fn set_taskid(&mut self, id:TaskId) {
-        self.0 = id
+        self.taskid = id
     }
 }
 
 impl<T> Default for CondAddr<T> {
     fn default() -> Self {
-        Self(TaskId::NONE, Pi::PINONE)
+        Self::from((TaskId::NONE, Place::Input, ArgIdx::AINONE))
     }
 }
 
-impl<T> From<(TaskId,Pi<T>)> for CondAddr<T> {
-    fn from((tid,pi): (TaskId,Pi<T>)) -> Self {
-        Self(tid, pi)
+impl<T> From<(TaskId,Place,ArgIdx<T>)> for CondAddr<T> {
+    fn from((tid,place,argi): (TaskId,Place,ArgIdx<T>)) -> Self {
+        Self {
+            taskid: tid,
+            place,
+            arg: argi,
+        }
     }
 }
 
 impl<T> Debug for CondAddr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"CA<{name}>({:?},Pi({:?}))",&self.0,&self.1.i(),name=type_name::<T>())
+        write!(f,"CA<{typename}>({:?},{}({:?}))",
+            &self.taskid,
+            if self.place == Place::Input {"Input"} else {"Output"},
+            self.argi().i(),
+            typename=type_name::<T>())
         // f.debug_tuple("CondAddr").field(&self.0).field(&self.1).finish()
     }
 }

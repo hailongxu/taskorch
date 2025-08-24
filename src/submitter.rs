@@ -1,5 +1,5 @@
 use crate::{
-    cond::{TaskId,CondAddr, Pi}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
+    cond::{ArgIdx, CondAddr, Place, TaskId}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
         taskid_next, PsOf, Task, TaskCurrier, TaskMap, TaskNeed
     }, Queue
 };
@@ -26,20 +26,20 @@ impl<Ps> TaskInf<Ps> {
     }
 }
 
-impl<Ps> TaskInf<Ps> {
-    pub fn input_at<const I:u8>(&self)->CondAddr<Ps::T>
-    where Ps:TupleAt<I> {
-        CondAddr::from((self.taskid, Pi::const_new::<I>()))
+impl<Args> TaskInf<Args> {
+    pub fn input_at<const I:u8>(&self)->CondAddr<Args::EleT>
+    where Args:TupleAt<I> {
+        CondAddr::from((self.taskid, Place::Input, ArgIdx::const_new::<I>()))
     }
 }
 
-impl<Ps> Debug for TaskInf<Ps> {
+impl<Args> Debug for TaskInf<Args> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"TaskInf{{{:?} input<{}>}}",self.taskid(),type_name::<Ps>())
+        write!(f,"TaskInf{{{:?} input<{}>}}",self.taskid(),type_name::<Args>())
     }
 }
 
-type SummitResult<Ps> = Result<TaskInf<Ps>,TaskSubmitError>;
+type SummitResult<Args> = Result<TaskInf<Args>,TaskSubmitError>;
 
 /// Handles task submission to a specific queue
 #[derive(Clone)]
@@ -104,17 +104,17 @@ impl TaskSubmitter {
         MapFn::R: TupleCondAddr + Clone,
 
         ToFn: Send + 'static,
-        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
-        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'a MapFn::R,)>,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
         for<'d,'e> (
             &'d MapFn::R,
-            &'e <MapFn::R as TupleCondAddr>::Cat,
+            &'e <MapFn::R as TupleCondAddr>::TCA,
             // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
         ): WhenTupleComed,
         // here if we use 'd to substitue the 'e, the error occurs. ???
-        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat: From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
         // if subsitue the 2nd 'a with 'b, will lead to error???
-        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat: Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
     {
         let mk_postdo = |id:TaskId| {
             let c1map = self.c1map.clone();
@@ -213,18 +213,18 @@ impl TaskSubmitter {
         MapFn::R: TupleCondAddr + Clone,
 
         ToFn: Send + 'static,
-        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::Cat>,
-        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::Pt: From<(&'a MapFn::R,)>,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
         for<'d,'e> (
             &'d MapFn::R,
-            &'e <MapFn::R as TupleCondAddr>::Cat,
+            &'e <MapFn::R as TupleCondAddr>::TCA,
             // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
         ): WhenTupleComed,
         // here up if we use 'd to substitue the 'e, the error occurs. ???
-        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::Cat:
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA:
             // if subsitue the 2nd 'a with 'b, will lead to error???
-            From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R> +
-            Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R>,
+            From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R> +
+            Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
     {
         self.submit(taskneed).unwrap().taskid()
     }

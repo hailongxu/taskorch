@@ -4,7 +4,7 @@ use std::{
     }, thread
 };
 
-use crate::cond::{CondAddr,TaskId};
+use crate::cond::{CondAddr, Place, TaskId};
 use crate::{task::{Kind, Task}, Jhandle};
 
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
@@ -142,19 +142,25 @@ impl C1map {
             error!("task#{:?} is ZERO, not avaiable!", target_ca.taskid());
             return None;
         };
+        // @A : if not input arrow return None;
+        let Place::Input = target_ca.place() else {
+            error!("task#{:?} the direction is not input {:?}.", target_ca.taskid(), target_ca.argi());
+            return None;
+        };
         let mut lock = self.0.0.lock().unwrap();
         let Some((target_task,_target_postdo)) = lock.get_mut(target_taskid) else {
-            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.pi());
+            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.argi());
             return None;
         };
         let Some(param) = target_task.as_param_mut() else {
-            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.pi());
+            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.argi());
             return None;
         };
-        if !param.set(target_ca.pi().0 as usize, v) {
+        if !param.set(target_ca.argi().i() as usize, v) {
+            // the _target_i must be type of Input, because processed at @A 
             let _target_taskid = target_ca.taskid();
-            let _target_i = target_ca.pi();
-            let _target_type_name = param.typename(_target_i.0 as usize);
+            let _target_i = target_ca.argi();
+            let _target_type_name = param.typename(_target_i.i() as usize);
             let _data_type_name  = type_name::<T>();
             error!("target task#{_target_taskid:?}.cond#{_target_i:?} has type <{_target_type_name}> not identical to <{_data_type_name}>, \
                     cannot be updated with from task#{v_from:?}.{{{v:?}}}.");
@@ -256,9 +262,9 @@ fn test_when_tuple_comed() {
     let q = Queue::new();
     let id_from = TaskId::new(1);
     
-    let cond_addr1 = CondAddr::<i32>::const_new::<0>();
+    let cond_addr1 = CondAddr::<i32>::new::<0>();
     let taskid1 = NonZeroUsize::new(2).unwrap();
-    let cond_addr2 = CondAddr::<i32>::const_new::<1>();
+    let cond_addr2 = CondAddr::<i32>::new::<1>();
     let taskid2 = NonZeroUsize::new(2).unwrap();
 
     ().foreach(&id_from, c1map.clone(), (0,q.clone()));

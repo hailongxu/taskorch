@@ -4,32 +4,29 @@ use crate::cond::CondAddr;
 
 
 pub trait TupleAt<const I:u8> {
-    type T;
-    fn value_at(&self)->&Self::T;
+    type EleT;
+    fn value_at(&self)->&Self::EleT;
 }
 impl<const I:u8> TupleAt<I> for () {
-    type T = ();
+    type EleT = ();
     fn value_at(&self)->&() {
         &()
     }
 }
 impl<T1> TupleAt<0> for (T1,) {
-    type T=T1;
-    fn value_at(&self)->&Self::T {
+    type EleT=T1;
+    fn value_at(&self)->&Self::EleT {
         &self.0
     }
 }
 
 trait TupleExtAt {
-    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::T
+    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::EleT
         where Self: TupleAt<I>;
-    // {
-    //         <Self as TupleAt<I>>::value_at(&self)
-    // }
 }
 
 impl<T> TupleExtAt for T {
-    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::T
+    fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::EleT
         where Self: TupleAt<I> {
             <Self as TupleAt<I>>::value_at(&self)
     }
@@ -54,8 +51,8 @@ impl<T> TupleExtAt for T {
 macro_rules! tuple_at_impl {
     ($i: tt $TO: ident; $($T: ident),+) => {
         impl<$($T),+> TupleAt<$i> for ($($T),+) {
-            type T=$TO;
-            fn value_at(&self)->&Self::T {
+            type EleT=$TO;
+            fn value_at(&self)->&Self::EleT {
                 &self.$i
             }
         }
@@ -242,14 +239,14 @@ fn test_fndecl() {
 
 pub trait TupleCondAddr {
     type E1;
-    type Cat; // CondAddrTuple
-    const ONETOONE: Self::Cat;
+    type TCA; // CondAddrTuple
+    const ONETOONE: Self::TCA;
 }
 
 impl TupleCondAddr for () {
     type E1 = ();
-    type Cat = ();
-    const ONETOONE: Self::Cat = ();
+    type TCA = ();
+    const ONETOONE: Self::TCA = ();
 }
 
 // pub(crate) struct Single<T>(PhantomData<T>);
@@ -261,16 +258,16 @@ impl TupleCondAddr for () {
 
 impl<T1> TupleCondAddr for (T1,) {
     type E1 = T1;
-    type Cat = (CondAddr<T1>,);
-    const ONETOONE: Self::Cat = (CondAddr::<T1>::const_new::<0>(),);
+    type TCA = (CondAddr<T1>,);
+    const ONETOONE: Self::TCA = (CondAddr::<T1>::new::<0>(),);
 }
 
 macro_rules! impl_tuple_condaddr {
     ($($n:literal $T:ident),+) => {
         impl<$($T),+> TupleCondAddr for ($($T,)+) {
             type E1 = T1;
-            type Cat = ($(CondAddr<$T>,)+);
-            const ONETOONE:Self::Cat = ($(CondAddr::<$T>::const_new::<$n>(),)+);
+            type TCA = ($(CondAddr<$T>,)+);
+            const ONETOONE:Self::TCA = ($(CondAddr::<$T>::new::<$n>(),)+);
         }
     };
 }
@@ -285,11 +282,11 @@ impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6,6 T7,7 T8);
 
 
 #[test]
-fn test_condaddr() {
-    use crate::cond::{TaskId,Pi};
+fn test_tuple_condaddr() {
+    use crate::cond::{TaskId,ArgIdx,Place};
     let addr = <(i32, u32) as TupleCondAddr>::ONETOONE;
-    assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Pi::PI0)));
-    assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Pi::PI1)));
+    assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Place::Input,ArgIdx::AI0)));
+    assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Place::Input,ArgIdx::AI1)));
     dbg!(addr);
 }
 
