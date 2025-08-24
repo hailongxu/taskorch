@@ -48,6 +48,7 @@ impl Queue {
             .clear()
     }
 
+    /// get the length of the queue
     pub fn len(&self)->usize {
         self
             .0
@@ -58,6 +59,11 @@ impl Queue {
     }
 }
 
+/// spawn a thread to process tasks in the queue
+/// Args:
+/// - #1: queue: &Queue
+/// Returns:
+/// - return Jhandle
 pub fn spawn_thread(queue:&Queue)-> Jhandle {
     let quit_flag = Arc::<AtomicBool>::new(AtomicBool::new(false));
     let quit = quit_flag.clone();
@@ -144,22 +150,22 @@ impl C1map {
         };
         // @A : if not input arrow return None;
         let Place::Input = target_ca.place() else {
-            error!("task#{:?} the direction is not input {:?}.", target_ca.taskid(), target_ca.argi());
+            error!("task#{:?} the direction is not input {:?}.", target_ca.taskid(), target_ca.argidx());
             return None;
         };
         let mut lock = self.0.0.lock().unwrap();
         let Some((target_task,_target_postdo)) = lock.get_mut(target_taskid) else {
-            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.argi());
+            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.argidx());
             return None;
         };
         let Some(param) = target_task.as_param_mut() else {
-            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.argi());
+            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.argidx());
             return None;
         };
-        if !param.set(target_ca.argi().i() as usize, v) {
+        if !param.set(target_ca.argidx().i() as usize, v) {
             // the _target_i must be type of Input, because processed at @A 
             let _target_taskid = target_ca.taskid();
-            let _target_i = target_ca.argi();
+            let _target_i = target_ca.argidx();
             let _target_type_name = param.typename(_target_i.i() as usize);
             let _data_type_name  = type_name::<T>();
             error!("target task#{_target_taskid:?}.cond#{_target_i:?} has type <{_target_type_name}> not identical to <{_data_type_name}>, \

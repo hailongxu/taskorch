@@ -2,7 +2,7 @@
 use crate::cond::CondAddr;
 
 
-
+#[doc(hidden)]
 pub trait TupleAt<const I:u8> {
     type EleT;
     fn value_at(&self)->&Self::EleT;

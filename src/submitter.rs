@@ -6,12 +6,16 @@ use crate::{
 
 use std::{any::{type_name, Any, TypeId}, fmt::Debug, marker::PhantomData};
 
-#[derive(Debug)]
+
+/// Error type for task submission failures
+#[derive(Debug, PartialEq)]
 pub enum TaskSubmitError {
     /// when submit task, if the id has already existed in waitQueue.
     TaskIdAlreadyExists(TaskId),
 }
 
+/// Information about a submitted task
+/// Holds the task ID and Input type info for the task's parameters
 pub struct TaskInf<Ps> {
     taskid: TaskId,
     _phantom: PhantomData<Ps>,
@@ -27,6 +31,26 @@ impl<Ps> TaskInf<Ps> {
 }
 
 impl<Args> TaskInf<Args> {
+    /// get the cond addr of <I>th arguments.
+    /// 
+    /// # Examples:
+    /// ```rust
+    /// # use crate::{Pool,TaskBuildNew,Queue};
+    /// # let mut pool = Pool::new();
+    /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
+    /// # let submitter = pool.task_submitter(qid).unwrap();
+    /// 
+    /// let task = submitter.submit((|a:i32,b:bool|3).into_task()).unwrap();
+    /// println!("task inf: {task:?}");
+    /// let ca0 = task.input_at::<0>();
+    /// let ca1 = task.input_at::<1>();
+    /// println!("cond#0 of taskinf: {ca0:?}");
+    /// println!("cond#1 of taskinf: {ca1:?}");
+    /// ```
+    /// 
+    /// Return: CondAddr
+    /// Inputs:  
+    /// - I : const generic param u8, index of param 0-based.
     pub fn input_at<const I:u8>(&self)->CondAddr<Args::EleT>
     where Args:TupleAt<I> {
         CondAddr::from((self.taskid, Place::Input, ArgIdx::const_new::<I>()))
@@ -35,13 +59,14 @@ impl<Args> TaskInf<Args> {
 
 impl<Args> Debug for TaskInf<Args> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"TaskInf{{{:?} input<{}>}}",self.taskid(),type_name::<Args>())
+        write!(f,"TaskInf{{{:?},input<{}>}}",self.taskid(),type_name::<Args>())
     }
 }
 
-type SummitResult<Args> = Result<TaskInf<Args>,TaskSubmitError>;
+pub type SummitResult<Args> = Result<TaskInf<Args>,TaskSubmitError>;
 
-/// Handles task submission to a specific queue
+/// a `submitter` is responsable for submitting tasks into System Queues.
+/// You can create multiple submitters to submit tasks simultaneously.
 #[derive(Clone)]
 pub struct TaskSubmitter {
     #[allow(dead_code)]
@@ -55,27 +80,42 @@ impl TaskSubmitter {
     ///
     /// # Examples:
     /// ```rust
-    /// let task = (|a:i32|3,10).into_task(); // with explicit taskid=10
-    /// let task = submitter.submit(task.into_task()); 
-    /// assert_eq!(task,Ok(Some(TaskId::from(10))));
+    /// # use taskorch::{Pool,TaskBuildNew,TaskId,ArgIdx,Queue,TaskSubmitError};
+    /// # let mut pool = Pool::new();
+    /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
+    /// # let submitter = pool.task_submitter(qid).unwrap();
     /// 
+    /// // with explicit taskid=10
+    /// let task = (|a:i32|3,TaskId::from(10)).into_task();
+    /// let task = submitter.submit(task).unwrap();
+    /// assert_eq!(task.taskid(),TaskId::from(10));
+    /// println!("task inf: {task:?}");
     /// 
+    /// // task without any parameters, taskid is optional
     /// let task = (||3).into_task();
-    /// let task = submitter.submit(task.into_task()); 
-    /// assert_eq!(task,Ok(None));
+    /// let task = submitter.submit(task).unwrap();
+    /// assert_eq!(task.taskid(),TaskId::NONE);
+    /// // verify input_at ???
+    /// assert_eq!(task.input_at::<0>().argidx(),&ArgIdx::<()>::AI0);
+    /// println!("task inf: {task:?}");
     /// 
-    /// let task = (||3,1).into_task(); // with explicit taskid=1
-    /// let task = submitter.submit(task.into_task()); 
-    /// assert_eq!(task,Ok(Some(TaskId::from(1))));
+    /// // task without any parameter, but with explicit taskid = 1
+    /// // still use the taskid you inputted even if it is not necessary.
+    /// let task = (||3,1.into()).into_task();
+    /// let task = submitter.submit(task).unwrap(); 
+    /// assert_eq!(task.taskid(),TaskId::from(1));
+    /// println!("task inf: {task:?}");
     /// 
+    /// // with explicit taskid = 10
     /// // error, because 10 is used above.
-    /// let task = (||3,10).into_task(); // with explicit taskid=10
-    /// let task = submitter.submit(task.into_task()); 
-    /// assert_eq!(task,Error(err_msg)));
+    /// let task = (||3,10.into()).into_task();
+    /// let task = submitter.submit(task).unwrap_err(); 
+    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(10)));
+    /// println!("task inf: {task:?}");
     /// ```
-    /// 
+    ///
     /// # argments
-    /// * `TaskBuild` - generate from `.into_task()` 
+    /// * `TaskNeed` - generate from `.into_task()` 
     /// * `task` - The main body of the task to be executed. 
     /// * `map` - Mapping function for processing and forwarding the task result
     /// 
@@ -88,7 +128,7 @@ impl TaskSubmitter {
     /// * or else return Ok(TaskId)
     /// 
     /// 
-    // TODO next: Optimize postdo: if no taskmap and no tofn, set Option<postdo> to None
+    // TODO next: Optimize postdo: if no taskmap and no tofn, maybe use Option<postdo> to None
     // instead of always invoking it indiscriminately. (the present)
     #[allow(private_bounds)]
     pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskNeed{task,map:TaskMap(mapfn),tofn,..}:TaskNeed<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
@@ -254,15 +294,6 @@ fn test_conv() {
     assert!(b.is_none());
 }
 
-#[test]
-fn test_submmit_construct() {
-    use crate::task::TaskBuildNew;
-    use crate::curry::Currier;
-    use crate::task::PassthroughMapFn;
-    use crate::task::OneToOne;
-    let task: TaskNeed<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>> = (||println!("task='free':  Hello, 1 2 3 .."),TaskId::from(1)).into_task();
-    println!("task type={:?}", std::any::type_name_of_val(&task));
-}
 
 #[test]
 fn test_submmit() {

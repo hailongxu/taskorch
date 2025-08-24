@@ -1,47 +1,165 @@
-//! ## `cond` module
-//! 
-//! Core scheduling concepts:
-//! 
-//! <1> CondAddr<T>
-//! 
-//! <1.1> Logical address to locate a condition (not a memory address)
-//! Each Cond belongs to task, which is identified/marked/found by taskid.
-//! Each task has many Params, which is identified/marked/found by Pi.
-//! hence, the condaddr can be unique be located by taskid and paramter index.
-//! Contruct a CondAddr via `from()`.
-//! 
-//! <1.2> Type Annotation: CondAddr's data association requires explicit typing, 
-//! defining the Type-annotation concept. CondAddr is inherently type-annotated.
-//! 
-//! ## Exmaples:
-//! ```rust
-//! // cond addr is at (Task#1 and Task.Param#0) 
-//! let ca = CondAddr::from((TaskId::new(1),Pi::PI0)); 
-//! ```
-//! 
-//! <2> TaskId: Unique identifier for a task, as the first component of CondAddr.
-//! 
-//! <3> Pi: Zero-based index of a task parameter (also used as cond i), 
-//! as the 2nd conponent of CondAddr, whose type is derived from here.
-//! 
+//! # `cond` module
+//!
+//! ## Concept of Conditions
+//!
+//! - Each task has multiple **inputs** (called **conditions**)
+//! - Each function has multiple **inputs** (called **parameters**)
+//! - A task can be described by a function, where its conditions correspond to the function's parameters
+//!
+//! ## Locating a Condition
+//!
+//! The [`CondAddr<T>`] type serves as a **logical address** that uniquely identifies a condition's location and type.
+//!
+//! It contains four components:
+//!
+//! 1. **`taskid`**: Identifies which task the condition belongs to (see: [`TaskId`])
+//! 2. **`cond_index`**: The index of the condition within its task (see: [`ArgIdx`])
+//! 3. **`place`**: The physical/virtual location at the input entrance
+//! 4. **`Type`**: The built-in data type of the condition (expressed through the generic parameter `T`)
+//!
+//! ## How These Components Work Together
+//!
+//! - Components **1-3** form a **logical address** that specifies **where** to find the condition
+//! - Component **4** provides **type annotation** that specifies **what type of data** to expect
+//!
+//! ## Important Note
+//!
+//! This is purely a **descriptive address** - it identifies where data is located and what type it has,
+//! but does not itself provide access to the data. Actual data access requires separate mechanisms
+//! and is not implemented via [`Deref`] or similar traits on this type.
+//!
+//! This combination provides a complete, type-safe way to identify task conditions.
+
 
 
 use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 
-/// TaskId
-/// the unique in given pool instance system
+/// Logical address identifying the location and type of a condition within the system.
+///
+/// Represents the position of an input parameter (condition) in a task's interface, uniquely identified by:
+/// - [`TaskId`]: Which task contains the condition
+/// - [`ArgIdx<T>`]: The zero-based index and type of the parameter
+/// - [`Place`]: **Currently reserved for internal use** (distinguishes between input and output contexts)
+///
+/// The generic parameter `T` provides type safety by specifying the expected data type
+/// of the condition value at this address.
+///
+/// # Current Usage
+/// In the current API, users only work with **input conditions**. The `place` component
+/// is used internally by the system and is not exposed in the public interface.
+///
+/// # Note  
+/// This is a descriptive logical address, not a memory address. It identifies where
+/// data is located and what type it has, but does not itself provide data access.
+
+#[derive(PartialEq)]
+pub struct CondAddr<T>{
+    taskid: TaskId,
+    place: Place,
+    argidx: ArgIdx<T>
+}
+
+impl<T> CondAddr<T> {
+    /// The `NONE` address does not point to any condition.
+    pub const NONE: Self = Self {
+        taskid: TaskId::NONE,
+        place: Place::Input,
+        argidx: ArgIdx::AINONE,
+    };
+    pub(crate) const fn new<const I:u8>()->Self {
+        Self {
+            taskid: TaskId::NONE,
+            place: Place::Input,
+            argidx: ArgIdx::const_new::<I>(),
+        }
+    }
+}
+
+impl<T> CondAddr<T> {
+    #[inline]
+    pub const fn taskid(&self)->TaskId {
+        self.taskid
+    }
+    #[inline]
+    pub const fn place(&self)->&Place {
+        &self.place
+    }
+    #[inline]
+    pub const fn argidx(&self)->&ArgIdx<T> {
+        &self.argidx
+    }
+    #[inline]
+    pub fn set(&mut self, id:TaskId, place: Place, i:ArgIdx<T>) {
+        self.taskid = id;
+        self.place = place;
+        self.argidx = i;
+    }
+    #[inline]
+    pub fn set_taskid(&mut self, id:TaskId) {
+        self.taskid = id
+    }
+}
+
+impl<T> Default for CondAddr<T> {
+    fn default() -> Self {
+        Self::from((TaskId::NONE, Place::Input, ArgIdx::AINONE))
+    }
+}
+
 /// 
-/// enforce `TaskId` zero/non-zero semantics
-/// - Zero `TaskId` is now strictly internal (auto-assigned for unconditional tasks)
-/// - Caller attempts to create zero IDs will log warnings
-/// - Explicit non-zero IDs are required for all tasks (both conditional and unconditional). 
+/// construct a CondAddr
+/// Args:
+/// - #1: TaskId
+/// - #2: Place (Input or Output)
+/// - #3: ArgIdx (argument index, based from 0)
+/// Returns:
+/// - return CondAddr<T>
 /// 
-/// You can also convert the `TaskId` to `usize`, using `.as_usize()`.
+/// ## Exmaples:
+/// ```rust
+/// # use taskorch::{CondAddr,TaskId,ArgIdx,Place};
+/// // cond addr is at (Task#1 and Task.Param#0) 
+/// let ca = CondAddr::<i32>::from((TaskId::from(1),Place::Input,ArgIdx::AI0)); 
+/// ```
+impl<T> From<(TaskId,Place,ArgIdx<T>)> for CondAddr<T> {
+    fn from((tid,place,argi): (TaskId,Place,ArgIdx<T>)) -> Self {
+        Self {
+            taskid: tid,
+            place,
+            argidx: argi,
+        }
+    }
+}
+
+impl<T> Debug for CondAddr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"CondAddr<{typename}>{{{:?},{}({:?})}}",
+            &self.taskid,
+            if self.place == Place::Input {"Input"} else {"Output"},
+            self.argidx().i(),
+            typename=type_name::<T>())
+        // f.debug_tuple("CondAddr").field(&self.0).field(&self.1).finish()
+    }
+}
+
+
+/// A unique identifier for a task within a given pool instance system.
+///
+/// # Zero/Non-Zero Semantics
+///
+/// - **Zero `TaskId`**: Reserved for internal use only (auto-assigned for **tasks without conditions**)
+/// - **Caller-created IDs**: Attempts to create zero IDs will log warnings and are discouraged
+/// - **Explicit non-zero IDs**: Required for all **tasks with conditions**
+///
+/// # Conversion
+///
+/// You can convert a `TaskId` to `usize` using the [`as_usize()`](TaskId::as_usize) method.
 /// 
 /// # Example:
 /// ```
+/// # use taskorch::TaskId;
 /// let taskid = TaskId::from(3);
-/// let taskid = 3.into();
+/// let taskid: TaskId = 3.into();
 /// let uid = taskid.as_usize();
 /// ```
 #[derive(Clone, Copy, PartialEq)]
@@ -49,8 +167,18 @@ use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 pub struct TaskId(pub(crate) Option<NonZeroUsize>);
 
 impl TaskId {
-    pub(crate) const NONE : Self = Self(None);
-
+    /// A special [`TaskId`] value representing the absence of a task.
+    ///
+    /// # Purpose
+    /// - Serves as a dummy task ID for **tasks without conditions** that don't require a real identifier
+    /// - Reserved for internal system use
+    ///
+    /// # Usage Notes
+    /// - Use this constant directly via `TaskId::NONE`
+    /// - **Do not** attempt to create equivalent values using `TaskId::from(0)` or similar constructors
+    ///   - In `Debug` mode: this will panic or result in undefined behavior
+    ///   - In `Release` mode: this will generate warnings and may lead to system inconsistencies
+    pub const NONE: Self = Self(None);
 
     /// Construct a TaskId from usize，just use in self crate, not expose it.
     /// and does not output any message.
@@ -59,7 +187,7 @@ impl TaskId {
         Self(NonZeroUsize::new(id))
     }
 
-    /// convert the TskId to usize
+    /// convert the `TaskId` to `usize`
     #[inline]
     pub const fn as_usize(&self)->usize {
         match self.0 {
@@ -79,19 +207,21 @@ impl TaskId {
 /// 
 /// Examples:
 /// ```rust
-/// # use taskorch::task::TaskId; 
+/// # use taskorch::TaskId; 
 /// let taskid = TaskId::from(1); // ok
 /// ```
 /// Donot try to explictly construct `TaskId` from `0`.
-/// Debug mode panic example (only compiles in debug):
+/// Debug mode panic
+/// 
+/// example (only compiles in debug):
 /// ```should_panic
-/// # use taskorch::cond::TaskId;
+/// # use taskorch::TaskId;
 /// TaskId::from(0); // panics in debug
 /// ```
 ///
 /// Release mode behavior demonstration:
 /// ```no_run
-/// # use taskorch::task::TaskId;
+/// # use taskorch::TaskId;
 /// let _ = TaskId::from(0); // would log warning in release
 /// ```
 impl From<usize> for TaskId {
@@ -160,17 +290,22 @@ fn test_tid() {
     // println!("{tid:?}");
 }
 
-/// A 0-based index of representing the position of a parameter in fun or closure signature.
+/// A zero-based index representing the position of a parameter in a function or closure signature.
+///
+/// The generic parameter `T` indicates the type of the parameter at this index position.
+/// This type `T` is propagated to the corresponding [`CondAddr<T>`], ensuring consistent
+/// type annotation throughout the condition addressing system.
 /// 
 /// # Examples:
 /// ```rust
+/// # use taskorch::ArgIdx;
+/// 
 /// fn ff(a:i32,b:i16,c:char) {}
 /// 
-/// let pi = Pi::P0; // the index postion of 1st `a:i32` (index 0)
-/// let pi = Pi::P1; // the index postion of 2nd `b:i16` (index 1)
-/// let pi = Pi::P2; // the index postion of 3rd `c:char` (index 2)
-/// let pi = Pi::from(2); // equivalent Pi::P2
-/// let pi = 2.into(); // equivalent Pi::P2
+/// // with `input``
+/// let _ai = ArgIdx::<i8>::AI0; // point to a:i32
+/// let _ai = ArgIdx::<i8>::from(2); // point to c:char
+/// let _ai: ArgIdx::<i8> = 2.into(); // point to c:char
 /// ```
 #[derive(Copy, Clone, PartialEq)]
 #[repr(transparent)]
@@ -185,10 +320,10 @@ impl<T> ArgIdx<T> {
     pub const AI6:ArgIdx<T> = ArgIdx(6,PhantomData);
     pub const AI7:ArgIdx<T> = ArgIdx(7,PhantomData);
     pub const AI8:ArgIdx<T> = ArgIdx(8,PhantomData);
-    const  AINONE:ArgIdx<T> = ArgIdx(u8::MAX,PhantomData);
+    pub const AINONE:ArgIdx<T> = ArgIdx(u8::MAX,PhantomData);
 
-    pub(crate) const fn const_new<const i:u8>() -> Self {
-        ArgIdx(i,PhantomData)
+    pub(crate) const fn const_new<const I:u8>() -> Self {
+        ArgIdx(I,PhantomData)
     }
 }
 impl<T> ArgIdx<T> {
@@ -216,12 +351,27 @@ impl<T> Debug for ArgIdx<T> {
     }
 }
 
-/// added the position property for Arg
-/// at input/output/inner.
+#[test]
+fn test_argidx() {
+    let _ai = ArgIdx::<i8>::AI0; // equivalent Pi::P2
+    let _ai = ArgIdx::<i8>::from(2); // equivalent Pi::P2
+    let _ai: ArgIdx::<i8> = 2.into(); // equivalent Pi::P2
+}
 
-#[derive(PartialEq,Debug)]
-pub(crate) enum Place {
+/// Specifies the position context of an argument within a task's interface.
+///
+/// This is currently used internally by the system to distinguish between
+/// different argument contexts. User-facing APIs currently only expose
+/// input arguments.
+///
+/// # Variants
+/// - `Input`: Argument provided as input to the task
+/// - `Output`: Argument produced as output from the task (internal use only)
+#[derive(PartialEq, Debug)]
+pub enum Place {
+    /// Argument provided as input to the task
     Input,
+    /// Argument produced as output from the task (reserved for internal system use)
     Output,
 }
 
@@ -236,82 +386,3 @@ pub(crate) enum Place {
 //     }
 // }
 
-/// Cond Addr
-/// Represents the position where a condition occurs — specifically, the position of a parameter.
-///
-/// This is determined by a combination of the task ID and zero-based condition index,
-/// which together uniquely identify where the parameter is located in the system.
-// #[derive(Clone, Copy)]
-#[derive(PartialEq)]
-pub struct CondAddr<T>{
-    taskid: TaskId,
-    place: Place,
-    arg: ArgIdx<T>
-}
-
-impl<T> CondAddr<T> {
-    pub const NONE: Self = Self {
-        taskid:TaskId::NONE,
-        place: Place::Input,
-        arg: ArgIdx::AINONE,
-    };
-    pub(crate) const fn new<const i:u8>()->Self {
-        Self {
-            taskid: TaskId::NONE,
-            place: Place::Input,
-            arg: ArgIdx::const_new::<i>(),
-        }
-    }
-}
-
-impl<T> CondAddr<T> {
-    #[inline]
-    pub const fn taskid(&self)->TaskId {
-        self.taskid
-    }
-    #[inline]
-    pub const fn place(&self)->&Place {
-        &self.place
-    }
-    #[inline]
-    pub const fn argi(&self)->&ArgIdx<T> {
-        &self.arg
-    }
-    #[inline]
-    pub fn set(&mut self, id:TaskId, place: Place, i:ArgIdx<T>) {
-        self.taskid = id;
-        self.place = place;
-        self.arg = i;
-    }
-    #[inline]
-    pub fn set_taskid(&mut self, id:TaskId) {
-        self.taskid = id
-    }
-}
-
-impl<T> Default for CondAddr<T> {
-    fn default() -> Self {
-        Self::from((TaskId::NONE, Place::Input, ArgIdx::AINONE))
-    }
-}
-
-impl<T> From<(TaskId,Place,ArgIdx<T>)> for CondAddr<T> {
-    fn from((tid,place,argi): (TaskId,Place,ArgIdx<T>)) -> Self {
-        Self {
-            taskid: tid,
-            place,
-            arg: argi,
-        }
-    }
-}
-
-impl<T> Debug for CondAddr<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"CA<{typename}>({:?},{}({:?}))",
-            &self.taskid,
-            if self.place == Place::Input {"Input"} else {"Output"},
-            self.argi().i(),
-            typename=type_name::<T>())
-        // f.debug_tuple("CondAddr").field(&self.0).field(&self.1).finish()
-    }
-}

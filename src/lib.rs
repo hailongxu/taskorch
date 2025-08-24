@@ -17,7 +17,7 @@ pub mod task;
 mod submitter;
 
 pub use cond::{
-    CondAddr,TaskId,ArgIdx,
+    CondAddr,TaskId,ArgIdx,Place
 };
 
 use queue::C1map;
@@ -29,7 +29,7 @@ pub use task::{
     taskid_next,
 };
 
-pub use submitter::{TaskSubmitter,TaskSubmitError};
+pub use submitter::{TaskSubmitter,SummitResult,TaskSubmitError};
 
 
 /// a handle to a thread spawned for queue
@@ -74,12 +74,14 @@ impl Pool {
         }
     }
 
-    /// for Queue.id and Thread.id not Task.id
+    /// A new ID for Queue.id and Thread.id not including Task.id
     fn next_id(&mut self)->usize {
         self.id_next += 1;
         self.id_next
     }
 
+    /// creates a TaskSubmitter for the specified queue ID
+    /// returns None if the queue ID does not exist
     pub fn task_submitter(&self, qid:usize)->Option<TaskSubmitter> {
         let queue = self.queues.get(&qid)?.clone();
         let c1map = self.c1map.clone();

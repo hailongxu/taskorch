@@ -69,9 +69,9 @@ NO `return`, NO `target condaddr` required.
 ### Create a task body with `.into_task()`
 Any function or closure by calling `.into_task()` will complete constructing a task;
 ```rust
-# use taskorch::TaskBuildNew as _;
+# use taskorch::{TaskBuildNew,TaskId};
 // with an explicit taskid = 1
-let task = (|_:i32|{3}, 1).into_task();
+let task = (|_:i32|{3}, TaskId::from(1)).into_task();
 // with no explicit taskid, the system will auto-generate one when submitting !!!!
 let task = (|_:i32|{3}   ).into_task();
 ```
@@ -81,50 +81,33 @@ The only difference here is the use of `.into_exit_task()` instead of `.into_tas
 ## Task notify code
 ### Task result: N->1, pass to single task using `.to()`
 ```rust
-# use taskorch::TaskBuildNew as _;
-let task  = (|i16,i32|{}, 1).into_task();  // task#1 with 2 cond (#0 i16,#1 i32)
-let task1 = (||{2}).into_task().to(1,0); // task1 -> task
-let task2 = (||{3}).into_task().to(1,1); // task2 -> task
+# use taskorch::{TaskBuildNew,TaskId};
+let task  = (|i16,i32|{}, TaskId::from(1)).into_task();  // task#1 with 2 cond (#0 i16,#1 i32)
+let task1 = (||{2}).into_task().to(task.input_at::<0>()); // task1 -> task
+let task2 = (||{3}).into_task().to(task.input_at::<1>()); // task2 -> task
 ```
 
 ### Task result: 1->N, pass to multi task using `.fan_tuple_with()`
 ```rust
-# use taskorch::TaskBuildNew as _;
-let task1 = (|_:i16|{3}, 1).into_task(); // task#1 with cond#0
-let task2 = (|_:i32|{3}, 2).into_task(); // task#2 with cond#0
-let task  = (||(2i16,3i32)).into_task()  // task return type (#0 i16, #1 i32)
-            .fan_tuple_with(|(a,b):(i16,i32)|( // input parameter is the return type
-                (a,CondAddr(1,0)), // a --> task#1.cond#0
-                (b,CondAddr(2,0)), // b --> task#2.cond#0
-            ));
+# use taskorch::{TaskBuildNew,TaskId};
+let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond#0
+let task2 = (|_:i32|{3}, TaskId::from(2)).into_task(); // task#2 with cond#0
+let task  = (||2i16).into_task()  // task return type (#0 i16, #1 i32)
+            .fan_tuple_with(|a:i16| (1i16,2i32,))// input parameter is the return type
+            // a --> task#1.cond#0
+            // b --> task#2.cond#0
+            .all_to((task1.input_at::<0>(),task2.input_at::<0>()));
 ```
-
 
 #### ⚠️ Type cast NOTE
-> **❗ Error-prone operation!**  
-> When forwarding a task result to a conditional task's condition point:  
-> - **Ensure** the result type **must be identical to** the condition type.  
-> - **Violation will trigger `panic`!**  
-```rust
-# use taskorch::{TaskBuildNew as _, TaskBuildOp as _};
-// Sample code explanation
-let cc = |a:i32,b:i8|{}; // the type of cond #0 is `i32`
-                         // the type of cond #1 is `i8` 
-let f0 = ||5i32; // the return type is `i32`
-let f1 = ||5i8;  // the return type is `i8`
-
-let task_cc = (cc,TaskId::from(1)).into_task(); // taskid is explicitly set to 1
-let task_f0 = f0.into_task().to((TaskId::from(1),PI:PI0).into()); // *** return type `i32` === cond #0 type `i32` ***
-let task_f1 = f1.into_task().to((TaskId::from(1),PI:PI1).into()); // *** return type `i8` === cond #1 type `i8`   ***
-```
-
+In v0.3 TypeCheck is promoted at compile time as not to previous vers. at runtime. That will save you a lot of time.
 
 ## ⚠️ API NOTE
 As this project is currently in early active development, the API is **highly unstable** and **will change** in subsequent versions.
 
 ## Example
 ```rust
-use taskorch::{Pi, Pool, Queue, TaskBuildNew};
+use taskorch::{Pool, Queue, TaskBuildNew};
 // [A]      => [B1, B2] ## 1->N
 // [B1, B2] => [Exit]   ## N->1
 fn main() {
@@ -140,32 +123,37 @@ fn main() {
     // Step#3. create tasks
 
     // an indepent task
-    let _ = submitter.submit((||println!("task='free':  Hello, 1 2 3 ..")).into_task());
+    let task = (||println!("task='free':  Hello, 1 2 3 ..")).into_task();
+    let _ = submitter.submit(task);
 
     // an exit task with cond(#0 i32, #2 str)
-    let id_exit = submitter.submit(
+    let exit = submitter.submit(
         (|a:i32,msg:&str|
             println!("task='exit': received ({a},{msg:?}) and EXIT")
         ).into_exit_task()
     ).unwrap();
 
     // N->1 : pass i32 to exit-task.p0
-    let id_b1 = submitter.submit(
-        (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
-        .into_task().to(((id_exit, Pi::PI0)).into())
-    ).unwrap();
+    let b1 = (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
+        .into_task()
+        .to(exit.input_at::<0>());
+    let b1 = submitter.submit(b1).unwrap();
 
     // N->1 : pass str to exit task.p1
-    let id_b2 = submitter.submit(
-        (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
-        .into_task().to((id_exit, Pi::PI1).into())
-    ).unwrap();
+    let b2 = (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
+        .into_task()
+        .to(exit.input_at::<1>());
+    let b2 = submitter.submit(b2).unwrap();
 
     // 1->N : map result to task-b1 and task-b2
-    let _ = submitter.submit((||3).into_task().fan_tuple_with(move|a: i32|{
-        println!("task='A': fan to task=['B1','B2']");
-        ((a,(id_b1,Pi::PI0).into()),("exit",(id_b2,Pi::PI0).into()))
-    }));
+    let b3 = (||())
+        .into_task()
+        .fan_tuple_with(move|_:()|{
+            println!("task='A': fan to task=['B1','B2']");
+            (10,"exit")
+        })
+        .all_to((b1.input_at::<0>(),b2.input_at::<0>()));
+    let _ = submitter.submit(b3);
 
     // Step#4. start a thread and run
     pool.spawn_thread_for(qid);

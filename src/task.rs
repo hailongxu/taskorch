@@ -1,6 +1,4 @@
-//! ## task module
-//! 
-//! Core scheduling concepts:
+//! # `task` module
 //! 
 //! the minimum scheduled and running unit
 //! oritided to design type before submit, TaskNeed
@@ -17,7 +15,7 @@
 //! ## Exmaples:
 //! 
 //! ```rust
-//! 
+//! # use taskorch::{TaskBuildNew};
 //! // N->1
 //! let task = (|a:i32,b:bool|{}).into_task();
 //! let task1 = (||3).into_task().to(task.input_at::<0>());
@@ -26,14 +24,14 @@
 //! 
 //! 
 //! ```rust
-//! 
+//! # use taskorch::{TaskBuildNew};
 //! // 1->N
-//! let task1 = (|_:i32|{}).into_task();
-//! let task2 = (|_:bool|{}).into_task();
+//! let task1 = (|_:i32|{},1.into()).into_task();
+//! let task2 = (|_:bool|{},2.into()).into_task();
 //! let task = (|_:i32|3)
 //!     .into_task()
 //!     .fan_tuple_with(|_:i32|(true,9))
-//!     .all_to((task1.input_at::<0>(),task2.input_at::<0>())); 
+//!     .all_to((task2.input_at::<0>(),task1.input_at::<0>())); 
 //! ```
 //! 
 
@@ -191,16 +189,14 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     TC: TupleOpt,
     R1:TupleCondAddr,
 {
-    /// Configures the target condaddr to `(taskid, condid)`.
-    /// attention:
-    /// if the task has no result, the the to configuration is ignored.
+    /// Specifies where the result will be delivered.  
+    /// Note:
+    /// if the task has no result, unit type `()` is returned as per rust-lang.
     /// 
-    /// # Arguments:
-    /// * ca:`CondAddr` - the target cond place. target task identifier
-    /// * `i` - cond #index (0-based)
-    /// 
-    // pub fn old_to(self, taskid:usize, i:usize) -> TaskNeed<Currier, PassthroughMapFn<Currier::Ret>,()> {
-    // Tt: Target Type
+    /// ## Arguments:
+    /// * ca: `CondAddr` - identifying the target cond address.
+    /// ## Returns:
+    /// * `TaskNeed` - with the target condaddr
     pub fn to<'a>(self, ca:CondAddr<R>)
         -> TaskNeed<
             Currier<F,TC,R>,
@@ -228,8 +224,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         note = "Use `to()` instead for strict type check. \
                `old_to()` will be removed in next release."
     )]
-    // pub fn old_to(self, to: usize, pi: usize) -> TaskNeed<Currier, PassthroughMapFn<Currier::R>,(Currier::R,)>
-    pub fn old_to<'a>(self, to: usize, pi: usize) 
+    pub fn old_to<'a>(self, to: usize, ai: usize) 
         -> TaskNeed<
             Currier<F,TC,R>,
             PassthroughMapFn<R>,
@@ -238,11 +233,11 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
         >
     {
         warn!("Use .to() instead, the .old_to() will be removed in next version.");
-        debug_assert!(pi <= u8::MAX as usize);
-        if pi > u8::MAX as usize {
-            error!("The index of cond#{pi} is too large, shoul be <= {}.",u8::MAX);
+        debug_assert!(ai <= u8::MAX as usize);
+        if ai > u8::MAX as usize {
+            error!("The index of cond#{ai} is too large, shoul be <= {}.",u8::MAX);
         }
-        self.to(CondAddr::from((TaskId::from(to), Input, ArgIdx::from(pi as u8))))
+        self.to(CondAddr::from((TaskId::from(to), Input, ArgIdx::from(ai as u8))))
     }
 }
 
@@ -251,15 +246,20 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    /// Distribute the result of bady task to multi condaddrs.
+    /// Transforms a single result into multiple outputs for downstream distribution.
+    ///
+    /// Enables processing one task's output to produce multiple results that can be
+    /// directed to different subsequent tasks. Concurrent processing depends on
+    /// runtime resources and scheduling.
     /// 
     /// # Example:
     /// 
     /// ```rust
+    /// # use taskorch::{TaskBuildNew};
     /// // the 1st task#1 receives cond i16 from task
-    /// let task1 = (|_:i16|{},1).into_task(); 
+    /// let task1 = (|_:i16|{},1.into()).into_task(); 
     /// // the 2nd task#2 receives cond &'static str from task
-    /// let task2 = (|_:&'static str|{},2).into_task();
+    /// let task2 = (|_:&'static str|{},2.into()).into_task();
     /// // create task pass the its value to task1 and task2
     /// let task  = (||3i32).into_task(); // the task main body with return type i32
     /// 
@@ -267,34 +267,31 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// 
     /// // the type of input must be identical to return type of task body.
     /// task.fan_tuple_with(|_:i32|( 
-    ///     (8i16,    CondAddr(1,0)), // the 1st branch output
-    ///     ("apple", CondAddr(2,0)), // the 2nd branch output
+    ///     8i16,    // the 1st branch output
+    ///     "apple", // the 2nd branch output
     ///     ));
     /// ```
     /// 
-    /// # Arguments:
-    /// * mapfn: `FnOnce(Ret)->R`
-    /// * `Ret` - the result type of task body 
-    /// * `R` - is final output, must be two layer tuple. `((..),(..),..)`
-    /// 
-    /// # Returns:
-    /// * format is a tuple, each elemtn is a tuple too
-    /// * each element stands for an output
-    /// ```rust
+    /// # Arguments
+    /// * `mapfn` - A function that takes the task's result of type `R` and returns a tuple of type `MapR`
+    /// * `R` - The result type of the task body
+    /// * `MapR` - The output type, which must be a tuple `(T1, T2, ..., Tn)`
+    ///
+    /// # Returns
+    /// Returns a tuple where each element represents the output of one branch.
+    ///
+    /// The output structure is:
+    /// ```plaintext
     /// (
-    ///   value, /// the output of this branch  
-    ///   CondAddr(taskid, cond#i) /// the target condaddr the value will be passed to.  
+    ///    value1,  // Output for the 1st branch
+    ///    value2,  // Output for the 2nd branch
+    ///    ...
     /// )
     /// ```
-    /// 
-    /// * the whole structure of output is:
-    /// ```rust
-    ///  (  
-    ///     (value1,CondAddr(task1,cond#i)), /// the 1st branch  
-    ///     (value2,CondAddr(task2,cond#i)), /// the 2st branch  
-    ///     ...  
-    ///  )
-    /// ```
+    ///
+    /// # Type Constraints
+    /// - `MapR` must be a tuple type
+    /// - Each tuple element corresponds to one downstream processing branch
     pub fn fan_tuple_with<'a,MapFn,MapR>(self, mapfn:MapFn)
         -> TaskNeed<
             Currier<F,TC,R>,
@@ -346,8 +343,10 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     }
 }
 
+// Internal use only
 // just for keep the origin type of task input
 // TODO: maybe will be merged into CallOnce, at present, use this
+#[doc(hidden)]
 pub trait PsOf {
     type InputPs;
 }
@@ -371,24 +370,23 @@ pub trait TaskBuildNew<C,F,R,T> {
     /// 
     /// # Example:
     /// ```rust
-    /// 
+    /// # use taskorch::TaskBuildNew;
     /// // no return
     /// let task = (||{}).into_task(); // just a function
-    /// let task = (||{},1).into_task(); // function and an explicit taskid
+    /// let task = (||{},1.into()).into_task(); // function and an explicit taskid
     /// let task = (|_:i32|{}).into_task(); // task with one cond
-    /// let task = (|_:i32|{},2).into_task(); // task with one cond and explicit taskid
-
+    /// let task = (|_:i32|{},2.into()).into_task(); // task with one cond and explicit taskid
     /// // with return
     /// let task = (||3).into_task(); // just a function
-    /// let task = (||3,1).into_task(); // function and an explicit taskid
+    /// let task = (||3,1.into()).into_task(); // function and an explicit taskid
     /// let task = (|_:i32|3).into_task(); // task with one cond
-    /// let task = (|_:i32|3,2).into_task(); // task with one cond and explicit taskid
+    /// let task = (|_:i32|3,2.into()).into_task(); // task with one cond and explicit taskid
     /// ```
     /// 
     /// # Arguments:
-    /// * (fun,taskid:usize)
+    /// * (fun,TaskId)
     /// * fun : a function or a closure with param count less equal 8
-    /// * taskid: `usize`, you can also input the id explicitly
+    /// * taskid: `TaskId`, you can also input the id explicitly
     /// 
     /// A `taskid` is required when the function has parameters, because other tasks
     /// need to know the location `CondAddr(taskid, cond#i)` to which they pass conditions.
@@ -518,6 +516,9 @@ impl<P> Fndecl<(P,),(P,)> for PassthroughMapFn<P> {
         ps
     }
 }
+
+// Internal use only
+#[doc(hidden)]
 pub struct OneToOne<Rtuple:TupleCondAddr>(Rtuple::TCA);
 impl<P:TupleCondAddr> OneToOne<P>
 {
@@ -870,6 +871,17 @@ impl_task_build_new!(P1,P2,P3,P4,P5,P6);
 impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7);
 impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7,P8);
 
+
+#[test]
+fn test_taskneed_construct() {
+    // use crate::task::TaskBuildNew;
+    // use crate::curry::Currier;
+    // use crate::task::PassthroughMapFn;
+    // use crate::task::OneToOne;
+    let task: TaskNeed<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>>
+        = (||println!("task='free':  Hello, 1 2 3 .."),TaskId::from(1)).into_task();
+    println!("task type={:?}", std::any::type_name_of_val(&task));
+}
 
 #[test]
 fn test_task_new() {
