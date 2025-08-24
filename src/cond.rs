@@ -1,28 +1,35 @@
-//! ## cond module
+//! ## `cond` module
 //! 
 //! Core scheduling concepts:
 //! 
-//! <1> CondAddr: Logical address to locate a condition (not a memory address)
-//! Each Cond belongs to task, which is identified/found by taskid.
-//! Each task has many Params, which is identified/found by Pi.
+//! <1> CondAddr<T>
+//! 
+//! <1.1> Logical address to locate a condition (not a memory address)
+//! Each Cond belongs to task, which is identified/marked/found by taskid.
+//! Each task has many Params, which is identified/marked/found by Pi.
 //! hence, the condaddr can be unique be located by taskid and paramter index.
 //! Contruct a CondAddr via `from()`.
+//! 
+//! <1.2> Type Annotation: CondAddr's data association requires explicit typing, 
+//! defining the Type-annotation concept. CondAddr is inherently type-annotated.
+//! 
 //! ## Exmaples:
 //! ```rust
 //! // cond addr is at (Task#1 and Task.Param#0) 
 //! let ca = CondAddr::from((TaskId::new(1),Pi::PI0)); 
 //! ```
 //! 
-//! <2> TaskId: Unique identifier for a task
+//! <2> TaskId: Unique identifier for a task, as the first component of CondAddr.
 //! 
-//! <3> Pi: Zero-based index of a task parameter (also used as condition i)
+//! <3> Pi: Zero-based index of a task parameter (also used as cond i), 
+//! as the 2nd conponent of CondAddr, whose type is derived from here.
 //! 
 
 
 use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 
 /// TaskId
-/// the unique id of a pool instance system
+/// the unique in given pool instance system
 /// 
 /// enforce `TaskId` zero/non-zero semantics
 /// - Zero `TaskId` is now strictly internal (auto-assigned for unconditional tasks)
@@ -57,10 +64,10 @@ impl TaskId {
     /// # use taskorch::task::TaskId; 
     /// let taskid = TaskId::new(1); // ok
     /// ```
-    /// 
+    /// Donot try to explictly construct `TaskId` from `0`.
     /// Debug mode panic example (only compiles in debug):
     /// ```should_panic
-    /// # use taskorch::task::TaskId;
+    /// # use taskorch::cond::TaskId;
     /// TaskId::new(0); // panics in debug
     /// ```
     ///

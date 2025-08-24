@@ -9,7 +9,7 @@ use std::{
 #[macro_use]
 mod log;
 
-mod cond;
+pub mod cond;
 mod meta;
 mod curry;
 mod queue;
@@ -29,7 +29,7 @@ pub use task::{
     taskid_next,
 };
 
-pub use submitter::{TaskSubmitter,TaskError};
+pub use submitter::{TaskSubmitter,TaskSubmitError};
 
 
 /// a handle to a thread spawned for queue

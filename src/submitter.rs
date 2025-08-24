@@ -4,15 +4,14 @@ use crate::{
     }, Queue
 };
 
-use std::{any::{Any, TypeId}, fmt::Debug, marker::PhantomData};
+use std::{any::{type_name, Any, TypeId}, fmt::Debug, marker::PhantomData};
 
 #[derive(Debug)]
-pub enum TaskError {
+pub enum TaskSubmitError {
     /// when submit task, if the id has already existed in waitQueue.
     TaskIdAlreadyExists(TaskId),
 }
 
-#[derive(Debug)]
 pub struct TaskInf<Ps> {
     taskid: TaskId,
     _phantom: PhantomData<Ps>,
@@ -34,13 +33,13 @@ impl<Ps> TaskInf<Ps> {
     }
 }
 
-// impl<Ps> Debug for TaskInf<Ps> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f,"TaskInf{{{:?}}}",self.taskid())
-//     }
-// }
+impl<Ps> Debug for TaskInf<Ps> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"TaskInf{{{:?} input<{}>}}",self.taskid(),type_name::<Ps>())
+    }
+}
 
-type SummitResult<Ps> = Result<TaskInf<Ps>,TaskError>;
+type SummitResult<Ps> = Result<TaskInf<Ps>,TaskSubmitError>;
 
 /// Handles task submission to a specific queue
 #[derive(Clone)]
@@ -163,7 +162,7 @@ impl TaskSubmitter {
             // if let Some(id) = task.id {
                 if self.c1map.check(task.id).is_some() {
                     error!("task#{:?} has existed in queue!!",task.id);
-                    return Err(TaskError::TaskIdAlreadyExists(task.id))
+                    return Err(TaskSubmitError::TaskIdAlreadyExists(task.id))
                 }
             // }
 
@@ -189,7 +188,7 @@ impl TaskSubmitter {
                 Ok(TaskInf::new(TaskId(id)))
             } else {
                 error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
-                Err(TaskError::TaskIdAlreadyExists(TaskId(Some(taskid))))
+                Err(TaskSubmitError::TaskIdAlreadyExists(TaskId(Some(taskid))))
             }
         }
         // Ok(TaskId::NONE)
@@ -272,12 +271,20 @@ fn test_submmit() {
     let id1 = TaskId::new(1);
     let task = (|_:i32|(),id1).into_task();
     let task = s.submit(task);
+    println!("i32:{}",type_name::<i32>());
+    println!("debug of task: {task:?}");
     assert!(task.is_ok_and(|a|a.taskid()==id1));
 
     // repeat insert into task with same taskid, leading to an Err
     let task = (|_:i8|(),id1).into_task();
     let task = s.submit(task);
+    println!("debug of task: {task:?}");
     assert!(
-        task.is_err_and( |e| matches!( e, TaskError::TaskIdAlreadyExists(id) if {id==id1} ) )
+        task.is_err_and( |e| matches!( e, TaskSubmitError::TaskIdAlreadyExists(id) if {id==id1} ) )
     );
+}
+
+#[test]
+fn test_taskinf() {
+    let taskinf = TaskInf::<(i32,)>::new(TaskId::new(3));
 }

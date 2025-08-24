@@ -7,11 +7,6 @@ use std::{
 use crate::cond::{CondAddr,TaskId};
 use crate::{task::{Kind, Task}, Jhandle};
 
-// enum InsertError {
-//     /// task is must not be null
-//     TaskIdIsNull,
-// }
-
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
 // static  WHEN_NIL_COMED: Box<PostDo> = Box::new(|_|());
 
@@ -206,16 +201,11 @@ pub(crate) trait WhenTupleComed {
 
 impl WhenTupleComed for () {
     fn foreach(&self, _id_from:&TaskId,_c1map:C1map, _q:(usize,Queue)) {
-        // debug!("---type id:{:?} namne:{:?}", ().type_id(),type_name::<()>())
     }
 }
 
 impl<'a,'b, T:'static+Debug> WhenTupleComed for (&'a(T,),&'b(CondAddr<T>,)) {
-// impl<T1:'static+Debug,T2:'static+Debug> WhenTupleComed for ((T1,),(T2,)) {
     fn foreach(&self, id_from:&TaskId, c1map:C1map, q:(usize,Queue)) {
-        // debug!("---type id:{:?} name:{:?}", TypeId::of::<T1>(),type_name::<T1>());
-        // debug!("---type id:{:?} name:{:?}", TypeId::of::<T2>(),type_name::<T2>());
-
         when_ci_comed(&self.1.0, (&self.0.0,id_from), c1map, q);
     }
 }
@@ -225,7 +215,6 @@ macro_rules! when_tuple_comed_impl {
         impl< $($T:'static+Debug),+ > WhenTupleComed for (&($($T),+), &($(CondAddr<$T>),+)) {
             fn foreach(&self, id_from:&TaskId, c1map: C1map, q: (usize,Queue)) {
                 $(
-                    // debug!("---type id:{:?} name:{:?}", TypeId::of::<$T>(),type_name::<$T>());
                     when_ci_comed(&self.1.$i, (&self.0.$i,id_from), c1map.clone(), q.clone());
                 )+
             }
