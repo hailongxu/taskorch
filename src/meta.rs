@@ -119,8 +119,6 @@ fn test_tuple_at() {
 }
 
 
-
-
 pub(crate) trait Identical<T> {}
 impl<T> Identical<T> for T {}
 

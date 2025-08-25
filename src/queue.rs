@@ -275,5 +275,4 @@ fn test_when_tuple_comed() {
 
     ().foreach(&id_from, c1map.clone(), (0,q.clone()));
     (&(42,43), &(cond_addr1,cond_addr2)).foreach(&id_from, c1map.clone(), (0,q.clone()));
-    // ((42,), (cond_addr,)).foreach(&id_from, c1map.clone(), (0,q.clone()));
 }

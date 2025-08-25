@@ -144,21 +144,6 @@ impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskNeed<C,MapFn,MapR,ToFn> {
     }
 }
 
-// This is done to prevent exposing `curry` to external users, thereby avoiding unnecessary complexity in the documentation.
-// for the `to()` use the R of CallOnce:R, but it's just visibility inside crate.
-// #[doc(hidden)]
-// pub trait RofCurrier {
-//     type Ret;
-// }
-// // here, we predefinetely know the R is excitley the type of F::CallOnce::R
-// impl<F,C:TupleOpt,R> RofCurrier for Currier<F,C,R> {
-//     type Ret = R;
-// }
-
-// pub(crate) fn pass_through<T>(t:T)->(T,) {
-//     (t,)
-// }
-
 #[test]
 fn test_pass_through() {
     trait Function {}
@@ -424,64 +409,6 @@ pub trait TaskBuildNew<C,F,R,T> {
     }
 }
 
-/////////
-// / TaskBuildOp provides target condaddr configuration.
-// pub trait TaskBuildOp<Currier,R> {
-//     /// Configures the target condaddr to `(taskid, condid)`.
-//     /// # Arguments:
-//     /// * `taskid` - target task identifier
-//     /// * `i` - cond #index (0-based)
-//     fn to(self, taskid:usize,i:usize)->(TaskCurrier<Currier>,TaskMap<PassthroughMapFn<R>,()>);
-// }
-
-// pub trait TaskBuildOpMany<Currier,MapFn,R>
-//     where Currier: CallOnce,
-// {
-//     fn to_many(self, mapfn:MapFn)->(TaskCurrier<Currier>, TaskMap<MapFn,R>)
-//         where MapFn: Fndecl<(Currier::R,),R>;
-// }
-
-// struct PassthroughMapFn;
-// impl<P> Fndecl<(P,),P> for PassthroughMapFn {
-//     type Pt=(P,);
-//     type R=((P,);
-//     fn call(self,_ps:Self::Pt)->Self::R {
-//     }
-// }
-
-// impl<Currier> TaskBuildOp<Currier,Currier::R> for (TaskCurrier<Currier>, TaskMap<PassthroughMapFn<Currier::R>,()>)
-//     where
-//     Currier: CallOnce,
-// {
-//     fn to(self, taskid:usize, i:usize) -> (TaskCurrier<Currier>, TaskMap<PassthroughMapFn<Currier::R>,()>) {
-//         (
-//             TaskCurrier {
-//                 currier: self.0.currier,
-//                 id: self.0.id,
-//                 kind: self.0.kind,
-//             },
-//             TaskMap::To(CondAddr(taskid, i))
-//         )
-//     }
-// }
-
-// impl<Currier,MapFn1,R1,MapFn,R> TaskBuildOpMany<Currier,MapFn,R> for (TaskCurrier<Currier>, TaskMap<MapFn1,R1>)
-//     where
-//     Currier: CallOnce,
-// {
-//     fn to_many(self, mapfn:MapFn) -> (TaskCurrier<Currier>, TaskMap<MapFn,R>)
-//         where MapFn: Fndecl<(Currier::R,),R>
-//     {
-//         (
-//             TaskCurrier {
-//                 currier: self.0.currier,
-//                 id: self.0.id,
-//                 kind: self.0.kind,
-//             },
-//             TaskMap::ToMany(mapfn, PhantomData),
-//         )
-//     }
-// }//////
 
 #[test]
 fn test_task_build_fan_and_to() {
@@ -806,60 +733,6 @@ macro_rules! impl_task_build_new {
                 }
             }
         }
-
-
-
-
-
-
-        // impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>,PassthroughMapFn<R>,()> for F {
-        //     fn into_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskNeed (
-        //             TaskCurrier {
-        //                 currier: Currier::from(self),
-        //                 id: TaskId::NONE,
-        //                 kind: Kind::Normal,
-        //             },
-        //             TaskMap::None
-        //         )
-        //     }
-            
-        //     fn into_exit_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskNeed (
-        //             TaskCurrier {
-        //                 currier: Currier::from(self),
-        //                 id: TaskId::NONE,
-        //                 kind: Kind::Exit,
-        //             },
-        //             TaskMap::None
-        //         )
-        //     }
-        // }
-
-
-        // impl<F: FnOnce($($P),+) -> R, $($P),+, R> TaskBuildNew<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> for (F, TaskId) {
-        //     fn into_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskNeed (
-        //             TaskCurrier {
-        //                 currier: Currier::from(self.0),
-        //                 id: self.1,
-        //                 kind: Kind::Normal,
-        //             },
-        //             TaskMap::None
-        //         )
-        //     }
-            
-        //     fn into_exit_task(self) -> TaskNeed<Currier<F, ($($P,)+), R>, PassthroughMapFn<R>,()> {
-        //         TaskNeed (
-        //             TaskCurrier {
-        //                 currier: Currier::from(self.0),
-        //                 id: self.1,
-        //                 kind: Kind::Exit,
-        //             },
-        //             TaskMap::None
-        //         )
-        //     }
-        // }
     };
 }
 
@@ -874,10 +747,6 @@ impl_task_build_new!(P1,P2,P3,P4,P5,P6,P7,P8);
 
 #[test]
 fn test_taskneed_construct() {
-    // use crate::task::TaskBuildNew;
-    // use crate::curry::Currier;
-    // use crate::task::PassthroughMapFn;
-    // use crate::task::OneToOne;
     let task: TaskNeed<Currier<_, (), ()>, PassthroughMapFn<()>, ((),), OneToOne<((),)>>
         = (||println!("task='free':  Hello, 1 2 3 .."),TaskId::from(1)).into_task();
     println!("task type={:?}", std::any::type_name_of_val(&task));

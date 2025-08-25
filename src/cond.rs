@@ -262,32 +262,11 @@ impl std::fmt::Debug for TaskId {
 //     }
 // }
 
-// /// just for debug message
-// #[doc(hidden)]
-// #[repr(transparent)]
-// pub(crate) struct TaskIdOption(pub(crate) Option<TaskId>);
-
-// impl std::fmt::Debug for TaskIdOption {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         if let Some(taskid) = self.0 {
-//             f.write_fmt(format_args!("TaskId({})",taskid.as_usize()))
-//             // f.debug_tuple("TaskId").field(&v).finish()
-//         } else {
-//             f.write_fmt(format_args!("TaskId(None)"))
-//             // f.debug_tuple("TaskId").field(&v).finish()
-//         }
-//     }
-// }
-
 #[test]
 fn test_tid() {
-    let tid = TaskId::from(3);
-    let tid: TaskId = 3.into();
-    let tid = TaskId::new(0);
-    // let tid = TaskIdOption(Some(tid));
-    // println!("{tid:?}");
-    // let tid = TaskIdOption(None);
-    // println!("{tid:?}");
+    let _tid = TaskId::from(3);
+    let _tid: TaskId = 3.into();
+    let _tid = TaskId::new(0);
 }
 
 /// A zero-based index representing the position of a parameter in a function or closure signature.
@@ -374,15 +353,3 @@ pub enum Section {
     /// Argument produced as output from the task (reserved for internal system use)
     Output,
 }
-
-// impl<T> Debug for Section<T> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Self::Input(arg0) =>
-//                 f.write_fmt(format_args!("Input<>({})",arg0.i())),
-//             Self::Output(arg0) =>
-//                 f.write_fmt(format_args!("Output<>({})",arg0.i())),
-//         }
-//     }
-// }
-
