@@ -63,25 +63,25 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
         .unwrap();
     let exit = submitter1.submit(
         (|_:i32| {println!("task='exit1': exit and [1] => task='exit2'");1})
-        .into_exit_task().to(exit.input_at::<0>())
+        .into_exit_task().bind_to(exit.input_ca::<0>())
     ).unwrap();
 
     // task add
     let add = submitter1.submit(
         (|a:i32,b:i32|{println!("task='add': (a:{a:?}+b:{b:?}) => task='exit'");a+b})
-        .into_task().to(exit.input_at::<0>())
+        .into_task().bind_to(exit.input_ca::<0>())
     ).unwrap();
 
     // task B1
     let b1 = submitter1.submit(
         (|a:i32|{println!("task='B1': recv (a:{a}) and [{a}] => task='add'");a})
-        .into_task().to(add.input_at::<0>())
+        .into_task().bind_to(add.input_ca::<0>())
     ).unwrap();
 
     // task B2
     let b2 = submitter1.submit(
         (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}]=> task='add'");a})
-        .into_task().to(add.input_at::<1>())
+        .into_task().bind_to(add.input_ca::<1>())
     ).unwrap();
 
     // submitter2
@@ -95,16 +95,16 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
     // task count
     let count = submitter2.submit(
         (|a:&str|{println!("task='count': (a:{a:?}) and [{}] => task='exit3'",a.len());a.len()})
-        .into_task().to(exit3.input_at::<0>())
+        .into_task().bind_to(exit3.input_ca::<0>())
     ).unwrap();
 
     // task A
     let _ = submitter2.submit(
         (||{println!("task='params': and pass [1,2,'123456789'] to task=['B1','B2','count']");1})
-        .into_task().fan_tuple_with(
+        .into_task().map_tuple_with(
             move |_:i32| (1, 2, "123456789",)
         )
-        .all_to((b1.input_at(),b2.input_at(),count.input_at()))
+        .bind_all_to((b1.input_ca(),b2.input_ca(),count.input_ca()))
     );
 }
 

@@ -283,10 +283,10 @@ impl_tuple_condaddr!(0 T1,1 T2, 2 T3,3 T4,4 T5,5 T6,6 T7,7 T8);
 
 #[test]
 fn test_tuple_condaddr() {
-    use crate::cond::{TaskId,ArgIdx,Place};
+    use crate::cond::{TaskId,ArgIdx,Section};
     let addr = <(i32, u32) as TupleCondAddr>::ONETOONE;
-    assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Place::Input,ArgIdx::AI0)));
-    assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Place::Input,ArgIdx::AI1)));
+    assert_eq!(addr.0, CondAddr::<i32>::from((TaskId::NONE,Section::Input,ArgIdx::AI0)));
+    assert_eq!(addr.1, CondAddr::<u32>::from((TaskId::NONE,Section::Input,ArgIdx::AI1)));
     dbg!(addr);
 }
 

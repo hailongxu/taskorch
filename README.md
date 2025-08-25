@@ -32,10 +32,10 @@ see [Task creations code](#task-creation-code)
 
 ### Task **Inter** Flow
 #### 1. N --> 1
-Pass each `[task1.result, task2.result, ..]` to `task(cond#1,cond#2,..)` using `.to()`  
+Pass each `[task1.result, task2.result, ..]` to `task(cond#1,cond#2,..)` using `.bind_to()`  
 see [Example task N->1](#task-n-1-creation-code).
 #### 2. 1 --> N
-Map `task.result` to `[task1.cond, task2.cond,..]` using `.fan_tuple_with()`  
+Map `task.result` to `[task1.cond, task2.cond,..]` using `.map_tuple_with()`  
 see [Example task 1->N](#task-1-n-creation-code) (since v0.3.0).
 
 
@@ -57,8 +57,8 @@ Optional features can be enabled based on your needs (see [Available Features](#
 ### Building a Task (2-Step Process)
 2. **Create**:  Create the task from function or closure chained by `.into_task()`.
 3. **Notify (Optional)**:  
-    Forward task's result by calling `to()` to set a `target condaddr`.  
-    Or forward task's result by calling `fan_tuple_with()` to multi `target condaddr`.   
+    Forward task's result by calling `bind_to()` to set a `target condaddr`.  
+    Or forward task's result by calling `map_tuple_with()` to multi `target condaddr`.   
    *This step can be skipped if the task does not produce any output.*
 
 ## Task Creation Code
@@ -79,24 +79,24 @@ let task = (|_:i32|{3}   ).into_task();
 The only difference here is the use of `.into_exit_task()` instead of `.into_task()`.
 
 ## Task notify code
-### Task result: N->1, pass to single task using `.to()`
+### Task result: N->1, pass to single task using `.bind_to()`
 ```rust
 # use taskorch::{TaskBuildNew,TaskId};
 let task  = (|i16,i32|{}, TaskId::from(1)).into_task();  // task#1 with 2 cond (#0 i16,#1 i32)
-let task1 = (||{2}).into_task().to(task.input_at::<0>()); // task1 -> task
-let task2 = (||{3}).into_task().to(task.input_at::<1>()); // task2 -> task
+let task1 = (||{2}).into_task().bind_to(task.input_ca::<0>()); // task1 -> task
+let task2 = (||{3}).into_task().bind_to(task.input_ca::<1>()); // task2 -> task
 ```
 
-### Task result: 1->N, pass to multi task using `.fan_tuple_with()`
+### Task result: 1->N, pass to multi task using `.map_tuple_with()`
 ```rust
 # use taskorch::{TaskBuildNew,TaskId};
 let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond#0
 let task2 = (|_:i32|{3}, TaskId::from(2)).into_task(); // task#2 with cond#0
 let task  = (||2i16).into_task()  // task return type (#0 i16, #1 i32)
-            .fan_tuple_with(|a:i16| (1i16,2i32,))// input parameter is the return type
+            .map_tuple_with(|a:i16| (1i16,2i32,))// input parameter is the return type
             // a --> task#1.cond#0
             // b --> task#2.cond#0
-            .all_to((task1.input_at::<0>(),task2.input_at::<0>()));
+            .bind_all_to((task1.input_ca::<0>(),task2.input_ca::<0>()));
 ```
 
 #### ⚠️ Type cast NOTE
@@ -136,23 +136,23 @@ fn main() {
     // N->1 : pass i32 to exit-task.p0
     let b1 = (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
         .into_task()
-        .to(exit.input_at::<0>());
+        .bind_to(exit.input_ca::<0>());
     let b1 = submitter.submit(b1).unwrap();
 
     // N->1 : pass str to exit task.p1
     let b2 = (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
         .into_task()
-        .to(exit.input_at::<1>());
+        .bind_to(exit.input_ca::<1>());
     let b2 = submitter.submit(b2).unwrap();
 
     // 1->N : map result to task-b1 and task-b2
     let b3 = (||())
         .into_task()
-        .fan_tuple_with(move|_:()|{
+        .map_tuple_with(move|_:()|{
             println!("task='A': fan to task=['B1','B2']");
             (10,"exit")
         })
-        .all_to((b1.input_at::<0>(),b2.input_at::<0>()));
+        .bind_all_to((b1.input_ca::<0>(),b2.input_ca::<0>()));
     let _ = submitter.submit(b3);
 
     // Step#4. start a thread and run

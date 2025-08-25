@@ -1,5 +1,5 @@
 use crate::{
-    cond::{ArgIdx, CondAddr, Place, TaskId}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
+    cond::{ArgIdx, CondAddr, Section, TaskId}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
         taskid_next, PsOf, Task, TaskCurrier, TaskMap, TaskNeed
     }, Queue
 };
@@ -35,15 +35,15 @@ impl<Args> TaskInf<Args> {
     /// 
     /// # Examples:
     /// ```rust
-    /// # use crate::{Pool,TaskBuildNew,Queue};
+    /// # use taskorch::{Pool,TaskBuildNew,Queue};
     /// # let mut pool = Pool::new();
     /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
     /// # let submitter = pool.task_submitter(qid).unwrap();
     /// 
     /// let task = submitter.submit((|a:i32,b:bool|3).into_task()).unwrap();
     /// println!("task inf: {task:?}");
-    /// let ca0 = task.input_at::<0>();
-    /// let ca1 = task.input_at::<1>();
+    /// let ca0 = task.input_ca::<0>();
+    /// let ca1 = task.input_ca::<1>();
     /// println!("cond#0 of taskinf: {ca0:?}");
     /// println!("cond#1 of taskinf: {ca1:?}");
     /// ```
@@ -51,9 +51,9 @@ impl<Args> TaskInf<Args> {
     /// Return: CondAddr
     /// Inputs:  
     /// - I : const generic param u8, index of param 0-based.
-    pub fn input_at<const I:u8>(&self)->CondAddr<Args::EleT>
+    pub fn input_ca<const I:u8>(&self)->CondAddr<Args::EleT>
     where Args:TupleAt<I> {
-        CondAddr::from((self.taskid, Place::Input, ArgIdx::const_new::<I>()))
+        CondAddr::from((self.taskid, Section::Input, ArgIdx::const_new::<I>()))
     }
 }
 
@@ -95,8 +95,8 @@ impl TaskSubmitter {
     /// let task = (||3).into_task();
     /// let task = submitter.submit(task).unwrap();
     /// assert_eq!(task.taskid(),TaskId::NONE);
-    /// // verify input_at ???
-    /// assert_eq!(task.input_at::<0>().argidx(),&ArgIdx::<()>::AI0);
+    /// // verify input_ca ???
+    /// assert_eq!(task.input_ca::<0>().argidx(),&ArgIdx::<()>::AI0);
     /// println!("task inf: {task:?}");
     /// 
     /// // task without any parameter, but with explicit taskid = 1

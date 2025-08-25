@@ -4,7 +4,7 @@ use std::{
     }, thread
 };
 
-use crate::cond::{CondAddr, Place, TaskId};
+use crate::cond::{CondAddr, Section, TaskId};
 use crate::{task::{Kind, Task}, Jhandle};
 
 type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
@@ -149,7 +149,7 @@ impl C1map {
             return None;
         };
         // @A : if not input arrow return None;
-        let Place::Input = target_ca.place() else {
+        let Section::Input = target_ca.section() else {
             error!("task#{:?} the direction is not input {:?}.", target_ca.taskid(), target_ca.argidx());
             return None;
         };

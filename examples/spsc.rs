@@ -44,15 +44,15 @@ fn produce_task(submitter:TaskSubmitter) {
         (|a:i32,b:i32|{
             println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
             a+b
-        }).into_task().to(id_exit.input_at::<0>())
+        }).into_task().bind_to(id_exit.input_ca::<0>())
     ).unwrap();
 
     prompt("params");
     let _ = submitter.submit(
         (||{println!("consume task='params': pass (1, 2) to task='add'");1},10.into())
         .into_task()
-        .fan_tuple_with(move|_:i32| (1,2))
-        .all_to((id_add.input_at::<0>(),id_add.input_at::<1>()))
+        .map_tuple_with(move|_:i32| (1,2))
+        .bind_all_to((id_add.input_ca::<0>(),id_add.input_ca::<1>()))
     );
 }
 

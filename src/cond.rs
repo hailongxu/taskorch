@@ -14,7 +14,7 @@
 //!
 //! 1. **`taskid`**: Identifies which task the condition belongs to (see: [`TaskId`])
 //! 2. **`cond_index`**: The index of the condition within its task (see: [`ArgIdx`])
-//! 3. **`place`**: The physical/virtual location at the input entrance
+//! 3. **`section`**: Identifies the interface section (input or output) for this parameter (see: [`Section`])
 //! 4. **`Type`**: The built-in data type of the condition (expressed through the generic parameter `T`)
 //!
 //! ## How These Components Work Together
@@ -39,13 +39,13 @@ use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 /// Represents the position of an input parameter (condition) in a task's interface, uniquely identified by:
 /// - [`TaskId`]: Which task contains the condition
 /// - [`ArgIdx<T>`]: The zero-based index and type of the parameter
-/// - [`Place`]: **Currently reserved for internal use** (distinguishes between input and output contexts)
+/// - [`Section`]: **Currently reserved for internal use** (distinguishes between input and output contexts)
 ///
 /// The generic parameter `T` provides type safety by specifying the expected data type
 /// of the condition value at this address.
 ///
 /// # Current Usage
-/// In the current API, users only work with **input conditions**. The `place` component
+/// In the current API, users only work with **input conditions**. The `Section` component
 /// is used internally by the system and is not exposed in the public interface.
 ///
 /// # Note  
@@ -55,7 +55,7 @@ use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 #[derive(PartialEq)]
 pub struct CondAddr<T>{
     taskid: TaskId,
-    place: Place,
+    section: Section,
     argidx: ArgIdx<T>
 }
 
@@ -63,13 +63,13 @@ impl<T> CondAddr<T> {
     /// The `NONE` address does not point to any condition.
     pub const NONE: Self = Self {
         taskid: TaskId::NONE,
-        place: Place::Input,
+        section: Section::Input,
         argidx: ArgIdx::AINONE,
     };
     pub(crate) const fn new<const I:u8>()->Self {
         Self {
             taskid: TaskId::NONE,
-            place: Place::Input,
+            section: Section::Input,
             argidx: ArgIdx::const_new::<I>(),
         }
     }
@@ -81,17 +81,17 @@ impl<T> CondAddr<T> {
         self.taskid
     }
     #[inline]
-    pub const fn place(&self)->&Place {
-        &self.place
+    pub const fn section(&self)->&Section {
+        &self.section
     }
     #[inline]
     pub const fn argidx(&self)->&ArgIdx<T> {
         &self.argidx
     }
     #[inline]
-    pub fn set(&mut self, id:TaskId, place: Place, i:ArgIdx<T>) {
+    pub fn set(&mut self, id:TaskId, section: Section, i:ArgIdx<T>) {
         self.taskid = id;
-        self.place = place;
+        self.section = section;
         self.argidx = i;
     }
     #[inline]
@@ -102,7 +102,7 @@ impl<T> CondAddr<T> {
 
 impl<T> Default for CondAddr<T> {
     fn default() -> Self {
-        Self::from((TaskId::NONE, Place::Input, ArgIdx::AINONE))
+        Self::from((TaskId::NONE, Section::Input, ArgIdx::AINONE))
     }
 }
 
@@ -110,22 +110,22 @@ impl<T> Default for CondAddr<T> {
 /// construct a CondAddr
 /// Args:
 /// - #1: TaskId
-/// - #2: Place (Input or Output)
+/// - #2: Section (Input or Output)
 /// - #3: ArgIdx (argument index, based from 0)
 /// Returns:
 /// - return CondAddr<T>
 /// 
 /// ## Exmaples:
 /// ```rust
-/// # use taskorch::{CondAddr,TaskId,ArgIdx,Place};
+/// # use taskorch::{CondAddr,TaskId,ArgIdx,Section};
 /// // cond addr is at (Task#1 and Task.Param#0) 
-/// let ca = CondAddr::<i32>::from((TaskId::from(1),Place::Input,ArgIdx::AI0)); 
+/// let ca = CondAddr::<i32>::from((TaskId::from(1),Section::Input,ArgIdx::AI0)); 
 /// ```
-impl<T> From<(TaskId,Place,ArgIdx<T>)> for CondAddr<T> {
-    fn from((tid,place,argi): (TaskId,Place,ArgIdx<T>)) -> Self {
+impl<T> From<(TaskId,Section,ArgIdx<T>)> for CondAddr<T> {
+    fn from((tid,section,argi): (TaskId,Section,ArgIdx<T>)) -> Self {
         Self {
             taskid: tid,
-            place,
+            section,
             argidx: argi,
         }
     }
@@ -135,7 +135,7 @@ impl<T> Debug for CondAddr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f,"CondAddr<{typename}>{{{:?},{}({:?})}}",
             &self.taskid,
-            if self.place == Place::Input {"Input"} else {"Output"},
+            if self.section == Section::Input {"Input"} else {"Output"},
             self.argidx().i(),
             typename=type_name::<T>())
         // f.debug_tuple("CondAddr").field(&self.0).field(&self.1).finish()
@@ -368,14 +368,14 @@ fn test_argidx() {
 /// - `Input`: Argument provided as input to the task
 /// - `Output`: Argument produced as output from the task (internal use only)
 #[derive(PartialEq, Debug)]
-pub enum Place {
+pub enum Section {
     /// Argument provided as input to the task
     Input,
     /// Argument produced as output from the task (reserved for internal system use)
     Output,
 }
 
-// impl<T> Debug for Place<T> {
+// impl<T> Debug for Section<T> {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 //         match self {
 //             Self::Input(arg0) =>

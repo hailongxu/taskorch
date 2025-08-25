@@ -18,8 +18,8 @@
 //! # use taskorch::{TaskBuildNew};
 //! // N->1
 //! let task = (|a:i32,b:bool|{}).into_task();
-//! let task1 = (||3).into_task().to(task.input_at::<0>());
-//! let task2 = (||true).into_task().to(task.input_at::<1>());
+//! let task1 = (||3).into_task().bind_to(task.input_ca::<0>());
+//! let task2 = (||true).into_task().bind_to(task.input_ca::<1>());
 //! ```
 //! 
 //! 
@@ -30,8 +30,8 @@
 //! let task2 = (|_:bool|{},2.into()).into_task();
 //! let task = (|_:i32|3)
 //!     .into_task()
-//!     .fan_tuple_with(|_:i32|(true,9))
-//!     .all_to((task2.input_at::<0>(),task1.input_at::<0>())); 
+//!     .map_tuple_with(|_:i32|(true,9))
+//!     .bind_all_to((task2.input_ca::<0>(),task1.input_ca::<0>())); 
 //! ```
 //! 
 
@@ -39,7 +39,7 @@ use std::{
     any::Any, marker::PhantomData, sync::atomic::{AtomicUsize, Ordering}
 };
 
-use crate::{cond::{ArgIdx, CondAddr, Place::Input, TaskId}, curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
+use crate::{cond::{ArgIdx, CondAddr, Section::Input, TaskId}, curry::{CallOnce, CallParam, Currier}, meta::{TupleAt, TupleCondAddr, TupleOpt}};
 use crate::meta::Fndecl;
 
 
@@ -197,7 +197,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// * ca: `CondAddr` - identifying the target cond address.
     /// ## Returns:
     /// * `TaskNeed` - with the target condaddr
-    pub fn to<'a>(self, ca:CondAddr<R>)
+    pub fn bind_to<'a>(self, ca:CondAddr<R>)
         -> TaskNeed<
             Currier<F,TC,R>,
             PassthroughMapFn<R>,
@@ -221,10 +221,10 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
 
     #[deprecated(
         since="0.3.0",
-        note = "Use `to()` instead for strict type check. \
-               `old_to()` will be removed in next release."
+        note = "Use `.bind_to()` instead for strict type check. \
+               `to()` will be removed in next release."
     )]
-    pub fn old_to<'a>(self, to: usize, ai: usize) 
+    pub fn to<'a>(self, to: usize, ai: usize) 
         -> TaskNeed<
             Currier<F,TC,R>,
             PassthroughMapFn<R>,
@@ -232,12 +232,12 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
             OneToOne<(R,)>,
         >
     {
-        warn!("Use .to() instead, the .old_to() will be removed in next version.");
+        warn!("Use .bind_to() instead, the .to() will be removed in next version.");
         debug_assert!(ai <= u8::MAX as usize);
         if ai > u8::MAX as usize {
             error!("The index of cond#{ai} is too large, shoul be <= {}.",u8::MAX);
         }
-        self.to(CondAddr::from((TaskId::from(to), Input, ArgIdx::from(ai as u8))))
+        self.bind_to(CondAddr::from((TaskId::from(to), Input, ArgIdx::from(ai as u8))))
     }
 }
 
@@ -266,7 +266,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// // distribute the result to task1 and task2
     /// 
     /// // the type of input must be identical to return type of task body.
-    /// task.fan_tuple_with(|_:i32|( 
+    /// task.map_tuple_with(|_:i32|( 
     ///     8i16,    // the 1st branch output
     ///     "apple", // the 2nd branch output
     ///     ));
@@ -292,7 +292,7 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// # Type Constraints
     /// - `MapR` must be a tuple type
     /// - Each tuple element corresponds to one downstream processing branch
-    pub fn fan_tuple_with<'a,MapFn,MapR>(self, mapfn:MapFn)
+    pub fn map_tuple_with<'a,MapFn,MapR>(self, mapfn:MapFn)
         -> TaskNeed<
             Currier<F,TC,R>,
             MapFn,
@@ -319,7 +319,7 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    pub fn all_to(mut self, cat: R1::TCA)->Self {
+    pub fn bind_all_to(mut self, cat: R1::TCA)->Self {
         self.tofn.0 = cat;
         self
     }
@@ -330,16 +330,16 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    pub fn input_at<const I:u8>(&self)->CondAddr<TC::EleT>
+    pub fn input_ca<const I:u8>(&self)->CondAddr<TC::EleT>
         where TC: TupleAt<I>
     {
         CondAddr::from((self.id(), Input, ArgIdx::from(I)))
     }
-    pub fn output_at<const I:u8>(&self)->CondAddr<R1::EleT>
+    pub fn output_ca<const I:u8>(&self)->CondAddr<R1::EleT>
         where R1: TupleAt<I>
     {
-        use crate::cond::Place;
-        CondAddr::from((self.id(), Place::Output, ArgIdx::from(I)))
+        use crate::cond::Section;
+        CondAddr::from((self.id(), Section::Output, ArgIdx::from(I)))
     }
 }
 
@@ -359,7 +359,7 @@ impl<F,C:TupleOpt,R> PsOf for Currier<F,C,R> {
 /// TaskBuildOp provides target condaddr configuration.
 #[deprecated(
     since="0.3.0",
-    note = "Use `to()` directly, for this method has been integrated into the TaskNeed. \
+    note = "Use `.bind_to()` directly, for this method has been integrated into the TaskNeed. \
            trait `TaskBuildOp` actually do nothing and will be removed in next release."
 )]
 pub trait TaskBuildOp<Currier,R> {}
@@ -487,16 +487,16 @@ pub trait TaskBuildNew<C,F,R,T> {
 fn test_task_build_fan_and_to() {
     let task = (||3).into_task();
     if true {
-        task.fan_tuple_with(|_:i32| (3,));
+        task.map_tuple_with(|_:i32| (3,));
     } else {
-        task.to(CondAddr::from((TaskId::from(3),Input, ArgIdx::<i32>::AI0)));
+        task.bind_to(CondAddr::from((TaskId::from(3),Input, ArgIdx::<i32>::AI0)));
     }
 
     let task = (||{}).into_task();
     match 0 {
-        0 => {task.fan_tuple_with(|_:()| (3,) ); }
-        1 => {task.to(CondAddr::from((TaskId::from(3),Input, ArgIdx::AI0))); }
-        2 => {task.old_to(1,2); }
+        0 => {task.map_tuple_with(|_:()| (3,) ); }
+        1 => {task.bind_to(CondAddr::from((TaskId::from(3),Input, ArgIdx::AI0))); }
+        2 => {task.to(1,2); }
         _ => {}
     }
 }
