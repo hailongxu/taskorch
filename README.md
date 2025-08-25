@@ -90,17 +90,19 @@ let task2 = (||{3}).into_task().bind_to(task.input_ca::<1>()); // task2 -> task
 ### Task result: 1->N, pass to multi task using `.map_tuple_with()`
 ```rust
 # use taskorch::{TaskBuildNew,TaskId};
-let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond#0
-let task2 = (|_:i32|{3}, TaskId::from(2)).into_task(); // task#2 with cond#0
-let task  = (||2i16).into_task()  // task return type (#0 i16, #1 i32)
-            .map_tuple_with(|a:i16| (1i16,2i32,))// input parameter is the return type
-            // a --> task#1.cond#0
-            // b --> task#2.cond#0
-            .bind_all_to((task1.input_ca::<0>(),task2.input_ca::<0>()));
+let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond<i16>#0
+let task2 = (|_:i32|{3}, TaskId::from(2)).into_task(); // task#2 with cond<i32>#0
+let task = (|| 2i16).into_task() // Task output: i16
+    .map_tuple_with(|a: i16| (1i16, 2i32)) // Transforms input into multiple outputs
+    // Output binding:
+    // - result.#0: i16 (bound to task1.input<0>)
+    // - result.#1: i32 (bound to task2.input<0>)
+    // Type safety: All bindings are verified at compile time
+    .bind_all_to((task1.input_ca::<0>(), task2.input_ca::<0>()));
 ```
 
-#### ⚠️ Type cast NOTE
-In v0.3 TypeCheck is promoted at compile time as not to previous vers. at runtime. That will save you a lot of time.
+#### ⚠️ Type Safety Note
+Starting with v0.3, ***type checking** for binding **outputs to inputs** is enforced at **compile time** rather than at runtime as in previous versions. This shift enables early error detection during development, and reduces debugging time.
 
 ## ⚠️ API NOTE
 As this project is currently in early active development, the API is **highly unstable** and **will change** in subsequent versions.
@@ -148,8 +150,8 @@ fn main() {
     // 1->N : map result to task-b1 and task-b2
     let b3 = (||())
         .into_task()
-        .map_tuple_with(move|_:()|{
-            println!("task='A': fan to task=['B1','B2']");
+        .map_tuple_with(move|_: ()|{
+            println!("task='A': map `()=>(i32,&str)` and pass to task=['B1','B2']");
             (10,"exit")
         })
         .bind_all_to((b1.input_ca::<0>(),b2.input_ca::<0>()));

@@ -40,7 +40,7 @@ fn main() {
     let b3 = (||())
         .into_task()
         .map_tuple_with(move|_: ()|{
-            println!("task='A': fan to task=['B1','B2']");
+            println!("task='A': map `()=>(i32,&str)` and pass to task=['B1','B2']");
             (10,"exit")
         })
         .bind_all_to((b1.input_ca::<0>(),b2.input_ca::<0>()));

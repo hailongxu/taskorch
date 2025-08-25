@@ -138,7 +138,7 @@ pub struct TaskNeed<C,MapFn,MapR,ToFn>
 }
 
 impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskNeed<C,MapFn,MapR,ToFn> {
-    /// get task id from task, only if the task has conds.
+    /// get task id from task.
     pub fn id(&self)->TaskId {
         self.task.id
     }
@@ -240,30 +240,22 @@ impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     /// # Example:
     /// 
     /// ```rust
-    /// # use taskorch::{TaskBuildNew};
-    /// // the 1st task#1 receives cond i16 from task
-    /// let task1 = (|_:i16|{},1.into()).into_task(); 
-    /// // the 2nd task#2 receives cond &'static str from task
-    /// let task2 = (|_:&'static str|{},2.into()).into_task();
-    /// // create task pass the its value to task1 and task2
-    /// let task  = (||3i32).into_task(); // the task main body with return type i32
-    /// 
-    /// // distribute the result to task1 and task2
-    /// 
-    /// // the type of input must be identical to return type of task body.
-    /// task.map_tuple_with(|_:i32|( 
-    ///     8i16,    // the 1st branch output
-    ///     "apple", // the 2nd branch output
-    ///     ));
+    /// # use taskorch::TaskBuildNew;
+    /// let task  = (||3i32) // return i32
+    ///     .into_task()
+    ///     .map_tuple_with(|_:i32| // recv i32 
+    ///         (8i16,"apple") // and return (i16,&'static str)
+    ///     );
     /// ```
     /// 
     /// # Arguments
     /// * `mapfn` - A function that takes the task's result of type `R` and returns a tuple of type `MapR`
     /// * `R` - The result type of the task body
-    /// * `MapR` - The output type, which must be a tuple `(T1, T2, ..., Tn)`
+    /// * `MapR` - The output type, which must be a tuple `(T1, T2, ..., Tn)`.
     ///
     /// # Returns
     /// Returns a tuple where each element represents the output of one branch.
+    /// And the count of tuple max to 8.
     ///
     /// The output structure is:
     /// ```plaintext
@@ -304,8 +296,52 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
-    pub fn bind_all_to(mut self, cat: R1::TCA)->Self {
-        self.tofn.0 = cat;
+    /// Specifies the destination for all sub-results of this task.
+    ///
+    /// This method binds each element of the task's output tuple to a corresponding
+    /// target condition address. The binding follows a one-to-one correspondence
+    /// between the output elements and the provided condition addresses.
+    ///
+    /// # Note
+    /// If the task produces no results, the unit type `()` is returned as per Rust conventions.
+    ///
+    /// # Arguments
+    /// * `cats` - A tuple of condition addresses `(CondAddr, CondAddr, ...)`
+    ///   * Each element in the tuple corresponds to exactly one output type in `MapR`
+    ///   * The size of this tuple must match the arity of the task's output type `MapR`
+    ///   * Each condition address identifies the destination for its corresponding sub-result
+    ///
+    /// # Returns
+    /// * `Self` - The modified task builder with destination addresses configured
+    ///
+    /// # Example
+    /// ```rust
+    /// # use taskorch::{Pool, Queue, TaskBuildNew};
+    /// # let mut pool = Pool::new();
+    /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
+    /// # let submitter = pool.task_submitter(qid).unwrap();
+    /// // the 1st task#1 receives cond i16 from task
+    /// let task1 = (|_:i16|{}).into_task(); 
+    /// // the 2nd task#2 receives cond &'static str from task
+    /// let task2 = (|_:&'static str|{}).into_task();
+    /// // create task with i32 result
+    /// let task  = (||3i32).into_task() // the task main body with return type i32
+    ///     .map_tuple_with(|_:i32|( // i32 -> (i16, &'static str)
+    ///         8i16,    // the 1st branch output
+    ///         "apple", // the 2nd branch output
+    ///     ));
+    /// let task1 = submitter.submit(task1).unwrap();
+    /// let task2 = submitter.submit(task2).unwrap();
+    /// // bind the result to task1.p0 and task2.p0
+    /// let task = task.bind_all_to((
+    ///     task1.input_ca::<0>(),
+    ///     task2.input_ca::<0>(),
+    /// ));
+    /// let task = submitter.submit(task);
+    /// assert!(task.is_ok());
+    /// ```
+    pub fn bind_all_to(mut self, cats: R1::TCA)->Self {
+        self.tofn.0 = cats;
         self
     }
 }
@@ -315,11 +351,44 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     TC: TupleOpt,
     R1: TupleCondAddr,
 {
+    /// Returns a `CondAddr` representing the `I`-th input parameter of this task.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use taskorch::{TaskBuildNew, TaskId};
+    ///
+    /// // Task without an explicit TaskId (defaults to `NONE`)
+    /// let task = (|_: i32, _: bool| {}).into_task();
+    /// let ca0 = task.input_ca::<0>();
+    /// let ca1 = task.input_ca::<1>();
+    /// println!("cond#0 of task: {ca0:?}");
+    /// println!("cond#1 of task: {ca1:?}");
+    ///
+    /// // Task with explicit TaskId = 1
+    /// let task = (|_: i32, _: bool| {}, TaskId::from(1)).into_task();
+    /// let ca0 = task.input_ca::<0>();
+    /// let ca1 = task.input_ca::<1>();
+    /// println!("cond#0 of task: {ca0:?}");
+    /// println!("cond#1 of task: {ca1:?}");
+    /// ```
+    ///
+    /// # Type Parameters
+    /// - `I`: zero-based input-parameter index (`u8`).
+    ///
+    /// # Returns
+    /// `CondAddr<TC::EleT>` locating the `I`-th input.
+    ///
+    /// # Note
+    /// If no `TaskId` is explicitly provided, the address will remain incomplete
+    /// until the task is submitted.
     pub fn input_ca<const I:u8>(&self)->CondAddr<TC::EleT>
         where TC: TupleAt<I>
     {
         CondAddr::from((self.id(), Input, ArgIdx::from(I)))
     }
+    // at present, not exposed to caller.
+    #[doc(hidden)]
     pub fn output_ca<const I:u8>(&self)->CondAddr<R1::EleT>
         where R1: TupleAt<I>
     {

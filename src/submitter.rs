@@ -31,26 +31,32 @@ impl<Ps> TaskInf<Ps> {
 }
 
 impl<Args> TaskInf<Args> {
-    /// get the cond addr of <I>th arguments.
-    /// 
-    /// # Examples:
+    /// Returns a `CondAddr` pointing to the `I`-th **input** parameter of the
+    /// underlying task.
+    ///
+    /// # Examples
+    ///
     /// ```rust
-    /// # use taskorch::{Pool,TaskBuildNew,Queue};
-    /// # let mut pool = Pool::new();
-    /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
-    /// # let submitter = pool.task_submitter(qid).unwrap();
-    /// 
-    /// let task = submitter.submit((|a:i32,b:bool|3).into_task()).unwrap();
-    /// println!("task inf: {task:?}");
-    /// let ca0 = task.input_ca::<0>();
-    /// let ca1 = task.input_ca::<1>();
-    /// println!("cond#0 of taskinf: {ca0:?}");
-    /// println!("cond#1 of taskinf: {ca1:?}");
+    /// # use taskorch::{Pool, TaskBuildNew, Queue};
+    ///
+    /// # let mut pool   = Pool::new();
+    /// # let qid        = pool.insert_queue(&Queue::new()).unwrap();
+    /// # let submitter  = pool.task_submitter(qid).unwrap();
+    ///
+    /// let task_inf   = submitter.submit((|a: i32, b: bool| 3).into_task()).unwrap();
+    /// println!("TaskInf: {task_inf:?}");
+    ///
+    /// let ca0 = task_inf.input_ca::<0>();
+    /// let ca1 = task_inf.input_ca::<1>();
+    /// println!("cond #0: {ca0:?}");
+    /// println!("cond #1: {ca1:?}");
     /// ```
-    /// 
-    /// Return: CondAddr
-    /// Inputs:  
-    /// - I : const generic param u8, index of param 0-based.
+    ///
+    /// # Type Parameters
+    /// - `I`: zero-based index of the input parameter (`u8`).
+    ///
+    /// # Returns
+    /// `CondAddr<Args::EleT>` locating the `I`-th input parameter.    
     pub fn input_ca<const I:u8>(&self)->CondAddr<Args::EleT>
     where Args:TupleAt<I> {
         CondAddr::from((self.taskid, Section::Input, ArgIdx::const_new::<I>()))
