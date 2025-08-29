@@ -1,11 +1,29 @@
 use crate::{
-    cond::{ArgIdx, CondAddr, Section, TaskId}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, WhenTupleComed}, task::{
+    cond::{ArgIdx, CondAddr, Section, TaskId}, curry::CallOnce, log::{Level,LEVEL}, meta::{Fndecl, Identical, TupleAt, TupleCondAddr}, queue::{C1map, PostDo, WhenTupleComed}, task::{
         taskid_next, PsOf, Task, TaskCurrier, TaskMap, TaskNeed
     }, Queue
 };
 
 use std::{any::{type_name, Any, TypeId}, fmt::Debug, marker::PhantomData};
 
+/// Represents how a value was inserted into the system or queue.
+#[derive(Debug)]
+pub enum Submission<Ps> {
+    /// - `Added`: The task ID was not present; a new task was inserted.
+    Added(TaskInf<Ps>),
+    /// - `Updated`: The task ID already existed; the existing task was updated.
+    Updated(TaskInf<Ps>),
+}
+
+impl<Ps> Submission<Ps> {
+    /// Consumes self and returns the inner `TaskInf<Ps>`.
+    pub const fn take(self)->TaskInf<Ps> {
+        match self {
+            Self::Added(taskinf) => taskinf,
+            Self::Updated(taskinf) => taskinf,
+        }
+    }
+}
 
 /// Error type for task submission failures
 #[derive(Debug, PartialEq)]
@@ -82,7 +100,11 @@ pub struct TaskSubmitter {
 }
 
 impl TaskSubmitter {
-    /// Enqueues a new task for future scheduling
+    /// # submit(..)
+    /// Enqueues a new task for future scheduling.
+    /// Here, no error returns, always successfully.
+    /// If the id does not exits, add.
+    /// If the id has been exited, update.
     ///
     /// # Examples:
     /// ```rust
@@ -93,8 +115,122 @@ impl TaskSubmitter {
     /// 
     /// // with explicit taskid=10
     /// let task = (|a:i32|3,TaskId::from(10)).into_task();
-    /// let task = submitter.submit(task).unwrap();
+    /// let task = submitter.submit(task).take();
     /// assert_eq!(task.taskid(),TaskId::from(10));
+    /// println!("task inf: {task:?}");
+    /// 
+    /// // task without any parameters, taskid is optional
+    /// let task = (||3).into_task();
+    /// let task = submitter.submit(task).take();
+    /// assert_eq!(task.taskid(),TaskId::NONE);
+    /// // verify input_ca ???
+    /// assert_eq!(task.input_ca::<0>().argidx(),&ArgIdx::<()>::AI0);
+    /// println!("task inf: {task:?}");
+    /// 
+    /// // task without any parameter, but with explicit taskid = 1
+    /// // still use the taskid you inputted even if it is not necessary.
+    /// let task = (||3,1.into()).into_task();
+    /// let task = submitter.submit(task).take(); 
+    /// assert_eq!(task.taskid(),TaskId::from(1));
+    /// println!("task inf: {task:?}");
+    /// 
+    /// // with explicit taskid = 10
+    /// // error, because 10 is used above.
+    /// let task = (||3,10.into()).into_task();
+    /// let task = submitter.submit(task).take(); 
+    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(10)));
+    /// println!("task inf: {task:?}");
+    /// ```
+    ///
+    /// # argments
+    /// * `TaskNeed` - generate from `.into_task()` 
+    /// 
+    /// # returns
+    /// * `Submission` see `Submission`
+    /// * - when added Submission(Added(V))
+    /// * - when updated Submission(Updated(V))
+    /// 
+    // TODO next: Optimize postdo: if no taskmap and no tofn, maybe use Option<postdo> to None
+    // instead of always invoking it indiscriminately. (the present)
+    #[allow(private_bounds)]
+    pub fn submit<C,MapFn,MapR,ToFn>(&self,mut taskneed:TaskNeed<C,MapFn,MapFn::R,ToFn>)->Submission<C::InputPs>
+        where
+        TaskCurrier<C>: Task,
+        C: CallOnce + Send + 'static,
+        C::R: 'static + Debug,
+        C: PsOf,
+
+        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
+        MapFn::R: TupleCondAddr + Clone,
+
+        ToFn: Send + 'static,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
+        for<'d,'e> (
+            &'d MapFn::R,
+            &'e <MapFn::R as TupleCondAddr>::TCA,
+            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
+        ): WhenTupleComed,
+        // here if we use 'd to substitue the 'e, the error occurs. ???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
+        // if subsitue the 2nd 'a with 'b, will lead to error???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
+    {
+        // postdo maybe added another param of taskid indicating where the value comes from.
+        if 0 == taskneed.task.currier.count() {
+            let taskid = taskneed.task.id;
+            if LEVEL >= Level::Warn {
+                if let TaskId(Some(_id)) = taskid {
+                    warn!("Ignore the taskid {_id:?}: no conditions found for this task.");
+                }
+            }
+            // if id is set we will check whether it is conflicted in map queue.
+            if self.c1map.check(taskid).is_some() {
+                warn!("task#{:?} has existed in queue!!",taskid);
+            }
+
+            let taskcompiled = self.compile(taskneed);
+            self.queue.add_boxtask(taskcompiled);
+            debug!("task#{:?} added into Q#{}", taskid, self.qid);
+            Submission::Added(TaskInf::new(taskid))
+        } else { // with parameters
+             // @A, ensure, the task.id is nonzero.
+            if taskneed.id().0.is_none() {
+                taskneed.task.id = taskid_next();
+            }
+            // task.id must be some
+            let TaskId(Some(taskid)) = taskneed.task.id else {
+                unreachable!("task id has feeded in nonzero @A");
+            };
+            let taskcompiled = self.compile(taskneed);
+            let inserted = self.c1map.insert(taskcompiled, taskid);
+            if let crate::queue::Inserted::New = inserted {
+                // debug_assert_eq!(Some(taskid),id);
+                debug!("cond-task#{taskid:?} added into waitQueue");
+                Submission::Added(TaskInf::new(TaskId(Some(taskid))))
+            } else {
+                warn!("cond-task#{taskid:?} is duplicated and updated in waitQueue!");
+                Submission::Updated(TaskInf::new(TaskId(Some(taskid))))
+            }
+        }
+    }
+
+    /// Enqueues a task if not already present; otherwise returns an error.
+    /// Differs from `submit` which updates existing tasks.
+    ///
+    /// # Examples:
+    /// ```rust
+    /// # use taskorch::{Pool,TaskBuildNew,TaskId,ArgIdx,Queue,TaskSubmitError};
+    /// # let mut pool = Pool::new();
+    /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
+    /// # let submitter = pool.task_submitter(qid).unwrap();
+    /// 
+    /// // with explicit taskid=1
+    /// let task = (|a:i32|3,TaskId::from(1)).into_task();
+    /// let task = submitter.submit(task).unwrap();
+    /// assert_eq!(task.taskid(),TaskId::from(1));
     /// println!("task inf: {task:?}");
     /// 
     /// // task without any parameters, taskid is optional
@@ -105,39 +241,137 @@ impl TaskSubmitter {
     /// assert_eq!(task.input_ca::<0>().argidx(),&ArgIdx::<()>::AI0);
     /// println!("task inf: {task:?}");
     /// 
-    /// // task without any parameter, but with explicit taskid = 1
-    /// // still use the taskid you inputted even if it is not necessary.
+    /// // Task without parameters, but with explicit task ID = 1.
+    /// // The specified task ID is always used, even if not strictly necessary.
     /// let task = (||3,1.into()).into_task();
     /// let task = submitter.submit(task).unwrap(); 
     /// assert_eq!(task.taskid(),TaskId::from(1));
     /// println!("task inf: {task:?}");
     /// 
-    /// // with explicit taskid = 10
-    /// // error, because 10 is used above.
+    /// // with explicit taskid = 1
+    /// // error, because 1 is used above.
     /// let task = (||3,10.into()).into_task();
     /// let task = submitter.submit(task).unwrap_err(); 
-    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(10)));
+    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(1)));
     /// println!("task inf: {task:?}");
     /// ```
     ///
     /// # argments
     /// * `TaskNeed` - generate from `.into_task()` 
-    /// * `task` - The main body of the task to be executed. 
-    /// * `map` - Mapping function for processing and forwarding the task result
     /// 
     /// # returns
     /// * `SummitResult` - TaskInf or TaskError
     /// 
-    /// * if taskid has already existed, return Error
-    /// * if the task has no params and you donot fill an explicit taskid, 
-    /// * here, return Ok(TaskId::NONE)
-    /// * or else return Ok(TaskId)
-    /// 
+    /// * For parameterless tasks, an explicit ID is optional.
+    /// * If provided, it is assigned to the task; otherwise, `NONE` is returned.
     /// 
     // TODO next: Optimize postdo: if no taskmap and no tofn, maybe use Option<postdo> to None
     // instead of always invoking it indiscriminately. (the present)
     #[allow(private_bounds)]
-    pub fn submit<C,MapFn,MapR,ToFn>(&self,TaskNeed{task,map:TaskMap(mapfn),tofn,..}:TaskNeed<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
+    pub fn try_submit<C,MapFn,MapR,ToFn>(&self,mut taskneed:TaskNeed<C,MapFn,MapFn::R,ToFn>)->SummitResult<C::InputPs>
+        where
+        TaskCurrier<C>: Task,
+        C: CallOnce + Send + 'static,
+        C::R: 'static + Debug,
+        C: PsOf,
+
+        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
+        MapFn::R: TupleCondAddr + Clone,
+
+        ToFn: Send + 'static,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
+        for<'d,'e> (
+            &'d MapFn::R,
+            &'e <MapFn::R as TupleCondAddr>::TCA,
+            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
+        ): WhenTupleComed,
+        // here if we use 'd to substitue the 'e, the error occurs. ???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
+        // if subsitue the 2nd 'a with 'b, will lead to error???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA: Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
+    {
+        // postdo maybe added another param of taskid indicating where the value comes from.
+        // without parameter
+        if 0 == taskneed.task.currier.count() {
+            let taskid = taskneed.task.id;
+            if LEVEL >= Level::Warn {
+                if let TaskId(Some(_id)) = taskid {
+                    warn!("Ignore the taskid {_id:?}: no conditions found for this task.");
+                }
+            }
+            // if id is set we will check whether it is conflicted in map queue.
+            if self.c1map.check(taskid).is_some() {
+                error!("task#{:?} has existed in queue!!",taskid);
+                return Err(TaskSubmitError::TaskIdAlreadyExists(taskid))
+            }
+
+            let taskcompiled = self.compile(taskneed);
+            self.queue.add_boxtask(taskcompiled);
+            debug!("task#{:?} added into Q#{}", taskid, self.qid);
+            Ok(TaskInf::new(taskid))
+        } else { // with parameters
+             // @A, ensure, the task.id is nonzero.
+            if taskneed.id().0.is_none() {
+                taskneed.task.id = taskid_next();
+            }
+            // task.id must be some
+            let TaskId(Some(taskid)) = taskneed.task.id else {
+                unreachable!("task id has feeded in nonzero @A");
+            };
+            let taskcompiled = self.compile(taskneed);
+            let id = self.c1map.try_insert(taskcompiled, taskid);
+            if id.is_some() {
+                debug_assert_eq!(Some(taskid),id);
+                debug!("cond-task#{taskid:?} added into waitQueue");
+                Ok(TaskInf::new(TaskId(id)))
+            } else {
+                error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
+                Err(TaskSubmitError::TaskIdAlreadyExists(TaskId(Some(taskid))))
+            }
+        }
+    }
+
+    #[deprecated(
+        since="0.3.0",
+        note = "Use `submit()` instead for strict type check. \
+               `old_submit()` will be removed in next release and not able to type in compling."
+    )]
+    #[allow(private_bounds)]
+    pub fn old_submit<C,MapFn,MapR,ToFn>(&self,taskneed:TaskNeed<C,MapFn,MapFn::R,ToFn>)->TaskId
+        where
+        TaskCurrier<C>: Task,
+        C: CallOnce + Send + 'static,
+        C::R: 'static + Debug,
+        C: PsOf,
+
+        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
+        MapFn::R: TupleCondAddr + Clone,
+
+        ToFn: Send + 'static,
+        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
+        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
+        for<'d,'e> (
+            &'d MapFn::R,
+            &'e <MapFn::R as TupleCondAddr>::TCA,
+            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
+        ): WhenTupleComed,
+        // here up if we use 'd to substitue the 'e, the error occurs. ???
+        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA:
+            // if subsitue the 2nd 'a with 'b, will lead to error???
+            From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R> +
+            Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
+    {
+        self.submit(taskneed).take().taskid
+    }
+
+
+    #[allow(private_bounds)]
+    fn compile<C,MapFn,MapR,ToFn>(&self,TaskNeed{task,map:TaskMap(mapfn),tofn,..}:TaskNeed<C,MapFn,MapFn::R,ToFn>)->(Box<dyn Task+Send>,Box<PostDo>)
         where
         TaskCurrier<C>: Task,
         C: CallOnce + Send + 'static,
@@ -193,86 +427,10 @@ impl TaskSubmitter {
             postdo
         };
 
-        //
-        // postdo maybe added another param of taskid indicating where the value comes from.
-        // let postdo = Box::new(postdo);
-
-        // without parameter
-        if 0 == task.currier.count() {
-            if LEVEL >= Level::Warn {
-                if let TaskId(Some(_id)) = task.id {
-                    warn!("Ignore the taskid {_id:?}: no conditions found for this task.");
-                }
-            }
-            // if id is set we will check whether it is conflicted in map queue.
-            // if let Some(id) = task.id {
-                if self.c1map.check(task.id).is_some() {
-                    error!("task#{:?} has existed in queue!!",task.id);
-                    return Err(TaskSubmitError::TaskIdAlreadyExists(task.id))
-                }
-            // }
-
-            let taskid = task.id;
-            let task = Box::new(task);
-            let postdo = Box::new(mk_postdo(taskid));
-            self.queue.add_boxtask(task,postdo);
-            debug!("task#{:?} added into Q#{}", taskid, self.qid);
-            Ok(TaskInf::new(taskid))
-        } else { // with parameters
-            let mut task = task;
-            if task.id.0.is_none() { task.id = taskid_next(); } // @A, ensure, the task.id is nonzero.
-            let task = task;
-            // task.id must be some
-            let TaskId(Some(taskid)) = task.id else {
-                unreachable!("task id has feeded in nonzero @A");
-            };
-            let postdo = Box::new(mk_postdo(task.id));
-            let id = self.c1map.try_insert(task, postdo, taskid);
-            if id.is_some() {
-                debug_assert_eq!(Some(taskid),id);
-                debug!("cond-task#{taskid:?} added into waitQueue");
-                Ok(TaskInf::new(TaskId(id)))
-            } else {
-                error!("cond-task#{taskid:?} is duplicated and can not be added into waitQueue!");
-                Err(TaskSubmitError::TaskIdAlreadyExists(TaskId(Some(taskid))))
-            }
-        }
-        // Ok(TaskId::NONE)
-    }
-
-    #[deprecated(
-        since="0.3.0",
-        note = "Use `submit()` instead for strict type check. \
-               `old_submit()` will be removed in next release."
-    )]
-    #[allow(private_bounds)]
-    pub fn old_submit<C,MapFn,MapR,ToFn>(&self,taskneed:TaskNeed<C,MapFn,MapFn::R,ToFn>)->TaskId
-        where
-        TaskCurrier<C>: Task,
-        C: CallOnce + Send + 'static,
-        C::R: 'static + Debug,
-        C: PsOf,
-
-        MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
-        MapFn::Pt: From<(<C as CallOnce>::R,)>,
-        MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
-        MapFn::R: TupleCondAddr + Clone,
-
-        ToFn: Send + 'static,
-        for<'a> ToFn: Fndecl<(&'a MapFn::R,),<MapFn::R as TupleCondAddr>::TCA>,
-        for<'a> <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::Pt: From<(&'a MapFn::R,)>,
-        for<'d,'e> (
-            &'d MapFn::R,
-            &'e <MapFn::R as TupleCondAddr>::TCA,
-            // &'b <ToFn as Fndecl<(&'a MapFn::R,), <MapFn::R as TupleCondAddr>::Cat>>::R,
-        ): WhenTupleComed,
-        // here up if we use 'd to substitue the 'e, the error occurs. ???
-        for<'a,'c> &'a <MapFn::R as TupleCondAddr>::TCA:
-            // if subsitue the 2nd 'a with 'b, will lead to error???
-            From<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R> +
-            Identical<&'a <ToFn as Fndecl<(&'c MapFn::R,), <MapFn::R as TupleCondAddr>::TCA>>::R>,
-    {
-        self.submit(taskneed).unwrap().taskid()
+        let taskid = task.id;
+        let taskdo = Box::new(task);
+        let postdo = Box::new(mk_postdo(taskid));
+        (taskdo,postdo)
     }
 }
 
@@ -307,18 +465,29 @@ fn test_submmit() {
     let s = TaskSubmitter::test_new();
     let id1 = TaskId::new(1);
     let task = (|_:i32|(),id1).into_task();
-    let task = s.submit(task);
+    let task = s.try_submit(task);
     println!("i32:{}",type_name::<i32>());
     println!("debug of task: {task:?}");
     assert!(task.is_ok_and(|a|a.taskid()==id1));
 
     // repeat insert into task with same taskid, leading to an Err
     let task = (|_:i8|(),id1).into_task();
-    let task = s.submit(task);
+    let task = s.try_submit(task);
     println!("debug of task: {task:?}");
     assert!(
         task.is_err_and( |e| matches!( e, TaskSubmitError::TaskIdAlreadyExists(id) if {id==id1} ) )
     );
+
+    let task = (|_:i8|(),id1).into_task();
+    let task = s.submit(task);
+    println!("debug of task: {task:?}");
+    assert!(matches!(task,Submission::Updated(_)));
+
+    let id2 = TaskId::new(2);
+    let task = (|_:i8|(),id2).into_task();
+    let task = s.submit(task);
+    println!("debug of task: {task:?}");
+    assert!(matches!(task,Submission::Updated(_)));
 }
 
 #[test]
