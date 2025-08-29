@@ -22,19 +22,20 @@ fn main() {
         (|a:i32,msg:&str|
             println!("task='exit': received ({a},{msg:?}) and EXIT")
         ).into_exit_task()
-    ).unwrap();
+    ).take();
+    // let exit = exit.take();
 
     // N->1 : pass i32 to exit-task.p0
     let b1 = (|a:i32|{println!("task='B1':  pass ['{a}'] to task='exit'"); a})
         .into_task()
         .bind_to(exit.input_ca::<0>());
-    let b1 = submitter.submit(b1).unwrap();
+    let b1 = submitter.submit(b1).take();
 
     // N->1 : pass str to exit task.p1
     let b2 = (|msg:&'static str|{println!("task='B2':  pass ['{msg}'] to task='exit'");msg})
         .into_task()
         .bind_to(exit.input_ca::<1>());
-    let b2 = submitter.submit(b2).unwrap();
+    let b2 = submitter.submit(b2).take();
 
     // 1->N : map result to task-b1 and task-b2
     let b3 = (||())

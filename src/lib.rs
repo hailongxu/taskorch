@@ -29,7 +29,7 @@ pub use task::{
     taskid_next,
 };
 
-pub use submitter::{TaskSubmitter,SummitResult,TaskSubmitError};
+pub use submitter::{TaskSubmitter,Submission,SummitResult,TaskSubmitError};
 
 
 /// a handle to a thread spawned for queue

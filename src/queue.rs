@@ -7,29 +7,37 @@ use std::{
 use crate::cond::{CondAddr, Section, TaskId};
 use crate::{task::{Kind, Task}, Jhandle};
 
-type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
+pub(crate) type TaskDo = dyn Task+Send;
+pub(crate) type PostDo = dyn FnOnce(Box<dyn Any>) + Send;
 // static  WHEN_NIL_COMED: Box<PostDo> = Box::new(|_|());
+
+#[derive(Debug)]
+pub(crate) enum Inserted {
+    New,
+    Updated,
+}
+
 
 /// A queue holding tasks awaiting scheduling by threads
 #[derive(Clone)]
-pub struct Queue(Arc<(Mutex<VecDeque<(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
+pub struct Queue(Arc<(Mutex<VecDeque<(Box<TaskDo>,Box<PostDo>)>>,Condvar)>);
 
 impl Queue {
     pub fn new()->Self {
         Queue(Arc::new((Mutex::new(VecDeque::new()),Condvar::new())))
     }
 
-    pub(crate) fn add_boxtask(&self,task:Box<dyn Task+Send>, postdo: Box<PostDo>) {
+    pub(crate) fn add_boxtask(&self,taskcompiled:(Box<TaskDo>,Box<PostDo>)) {
         let mut lock = self.0.0.lock().unwrap();
         let is_empty = lock.is_empty();
-        lock.push_back((task,postdo));
+        lock.push_back(taskcompiled);
         if is_empty {
             self.0.1.notify_one();
         }
     }
 
     #[allow(dead_code)]
-    pub(crate) fn pop(&self)->Option<(Box<dyn Task+Send>,Box<PostDo>)> {
+    pub(crate) fn pop(&self)->Option<(Box<TaskDo>,Box<PostDo>)> {
         self
             .0
             .0
@@ -99,7 +107,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
 }
 
 #[derive(Clone)]
-pub(crate) struct C1map(Arc<(Mutex<HashMap<NonZeroUsize,(Box<dyn Task+Send>,Box<PostDo>)>>,Condvar)>);
+pub(crate) struct C1map(Arc<(Mutex<HashMap<NonZeroUsize,(Box<TaskDo>,Box<PostDo>)>>,Condvar)>);
 
 impl C1map {
     pub(crate) fn new()->Self {
@@ -119,7 +127,43 @@ impl C1map {
             None
         }
     }
-    pub(crate) fn try_insert<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->Option<NonZeroUsize>
+
+    pub(crate) fn insert(&self,taskcompiled:(Box<TaskDo>,Box<PostDo>),taskid:NonZeroUsize)->Inserted
+    {
+        let mut lock = self.0.0.lock().unwrap();
+        if let None = lock.insert(taskid, taskcompiled) {
+            Inserted::New
+        } else {
+            Inserted::Updated
+        }
+    }
+
+    pub(crate) fn try_insert(&self,taskcompiled:(Box<TaskDo>,Box<PostDo>),taskid:NonZeroUsize)->Option<NonZeroUsize>
+    {
+        let mut lock = self.0.0.lock().unwrap();
+        use std::collections::hash_map::Entry::{Occupied,Vacant};
+        match lock.entry(taskid) {
+            Occupied(_occupied_entry)
+                => None,
+            Vacant(vacant_entry)
+                => {
+                vacant_entry.insert(taskcompiled);
+                Some(taskid)
+            },
+        }
+    }
+
+
+    pub(crate) fn insert_old<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->NonZeroUsize
+    where T: Task + Send + 'static
+    {
+        let task: Box::<dyn Task + Send + 'static> = Box::new(task);
+        let mut lock = self.0.0.lock().unwrap();
+        lock.insert(taskid, (task,postdo));
+        taskid
+    }
+
+    pub(crate) fn old_try_insert<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->Option<NonZeroUsize>
     where T: Task + Send + 'static
     {
         let task: Box::<dyn Task + Send + 'static> = Box::new(task);
@@ -198,7 +242,7 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(target_ca:&CondAddr<T>, (v,v_from):
         return  false;
     };
     debug!("cond task#{:?} has all conditions been satified and scheduled to Q#{qid}", target_ca.taskid());
-    q.add_boxtask(target_task,postdo);
+    q.add_boxtask((target_task,postdo));
     true
 }
 
