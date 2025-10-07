@@ -18,13 +18,13 @@ Tasks can be executed in **two distinct modes**:
 
 ### task components
 The task consists of two main parts:
-1. **task body**(Inner Task). The core logic of the task, responsible for execution and producing a result.
-2. **result distribution**(Inter Task). determine how the result is passed to other CondAddrs
+1. **Result generation**: The core logic responsible for executing the task and producing a result.
+2. **Result distribution**: Determines how the result is delivered to other tasks identified by `CondAddr`.
 
 ### Task **Inner** Flow
 1. **Activation**: A task is scheduled once all its required conditions are fulfilled.
-2. **Execution**: The task runs and computes its return value.
-3. **Data Passing**: If a `target condaddr` is configured, the return value will be passed on to another task.  
+2. **Execution**: The task runs and output single or multiple results.
+3. **Data Passing**: If a `target condaddr` is configured, the return value will be forwarded to the specified task.  
 see [Task creations code](#task-creation-code)
 
 **Key Notes**:  
@@ -32,10 +32,10 @@ see [Task creations code](#task-creation-code)
 
 ### Task **Inter** Flow
 #### 1. N --> 1
-Pass each `[task1.result, task2.result, ..]` to `task(cond#1,cond#2,..)` using `.bind_to()`  
+Results from multi tasks `[task1.result, task2.result, ..]` are passed as inputs to a single `task(cond#1,cond#2,..)` using `.bind_to()`  
 see [Example task N->1](#task-n-1-creation-code).
 #### 2. 1 --> N
-Map `task.result` to `[task1.cond, task2.cond,..]` using `.map_tuple_with()`  
+The result from a single `task.result` is distributed to the conditions of multiple tasks `[task1.cond, task2.cond,..]` using `.bind_all_to()`  
 see [Example task 1->N](#task-1-n-creation-code) (since v0.3.0).
 
 
@@ -55,11 +55,13 @@ taskorch = {version="0.3.0", features=["log-info", "log-color"]}
 Optional features can be enabled based on your needs (see [Available Features](#available-features)).
 
 ### Building a Task (2-Step Process)
-2. **Create**:  Create the task from function or closure chained by `.into_task()`.
-3. **Notify (Optional)**:  
-    Forward task's result by calling `bind_to()` to set a `target condaddr`.  
-    Or forward task's result by calling `map_tuple_with()` to multi `target condaddr`.   
-   *This step can be skipped if the task does not produce any output.*
+1. **Create**:  Convert a function or closure into a task by calling `.into_task()`.
+2. **Notify (Optional)**:  
+    - Use `bind_to()` to send the task result to a single `target condaddr`.  
+    - Use `bind_all_to()` to distribute the multi-result from single task to multi `target condaddr`.   
+    > ⚠️ **Prerequisite**: Call `.map_tuple_with()` first to map the single result into multiple outputs.
+
+*The second step is optional and can be skipped if the task does not produce any result.*
 
 ## Task Creation Code
 #### Note
@@ -87,7 +89,7 @@ let task1 = (||{2}).into_task().bind_to(task.input_ca::<0>()); // task1 -> task
 let task2 = (||{3}).into_task().bind_to(task.input_ca::<1>()); // task2 -> task
 ```
 
-### Task result: 1->N, pass to multi task using `.map_tuple_with()`
+### Task result: 1->N, pass to multi task using `.bind_all_to()`
 ```rust
 # use taskorch::{TaskBuildNew,TaskId};
 let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond<i16>#0

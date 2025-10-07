@@ -1,17 +1,19 @@
 //! # `task` module
 //! 
-//! the minimum scheduled and running unit
-//! oritided to design type before submit, TaskNeed
-//! which contains the necessary inf for a task
-//! 
-//! the task's result can be configured passed to task input named by CA
-//! 
-//! task result can be reoutput to many subresult, and pass the subresult to multi-input
-//! and this is 1->N
-//! 
-//! task inputs can be receive from diffrent task-result
-//! and this is N->1
-//! 
+//! The smallest unit of scheduled and executable work.
+//!
+//! Designed to be constructed from [`TaskNeed`], which contains
+//! the essential information required for task definition and submission.
+//!
+//! The task's result can be configured to forward to another task's input,
+//! identified by a condition address [`CondAddr`].
+//!
+//! A single result can be mapped to multiple sub-results (using [`TaskNeed::map_tuple_with()`]),
+//! and each sub-result can be forwarded to different task inputs — enabling **1 → N** data flow. configured via `.bind_to()`
+//!
+//! Conversely, a task can receive inputs from multiple upstream tasks — enabling **N → 1** aggregation,
+//! configured via [`TaskNeed::bind_to()`].
+//!
 //! ## Exmaples:
 //! 
 //! ```rust

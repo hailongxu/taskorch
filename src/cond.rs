@@ -48,7 +48,7 @@ use std::{any::type_name, marker::PhantomData, num::NonZeroUsize, fmt::Debug};
 /// In the current API, users only work with **input conditions**. The `Section` component
 /// is used internally by the system and is not exposed in the public interface.
 ///
-/// # Note  
+/// # Note
 /// This is a descriptive logical address, not a memory address. It identifies where
 /// data is located and what type it has, but does not itself provide data access.
 
@@ -106,7 +106,7 @@ impl<T> Default for CondAddr<T> {
     }
 }
 
-/// 
+///
 /// construct a CondAddr
 /// Args:
 /// - #1: TaskId
@@ -114,12 +114,12 @@ impl<T> Default for CondAddr<T> {
 /// - #3: ArgIdx (argument index, based from 0)
 /// Returns:
 /// - return CondAddr<T>
-/// 
+///
 /// ## Exmaples:
 /// ```rust
 /// # use taskorch::{CondAddr,TaskId,ArgIdx,Section};
-/// // cond addr is at (Task#1 and Task.Param#0) 
-/// let ca = CondAddr::<i32>::from((TaskId::from(1),Section::Input,ArgIdx::AI0)); 
+/// // cond addr is at (Task#1 and Task.Param#0)
+/// let ca = CondAddr::<i32>::from((TaskId::from(1),Section::Input,ArgIdx::AI0));
 /// ```
 impl<T> From<(TaskId,Section,ArgIdx<T>)> for CondAddr<T> {
     fn from((tid,section,argi): (TaskId,Section,ArgIdx<T>)) -> Self {
@@ -154,7 +154,7 @@ impl<T> Debug for CondAddr<T> {
 /// # Conversion
 ///
 /// You can convert a `TaskId` to `usize` using the [`as_usize()`](TaskId::as_usize) method.
-/// 
+///
 /// # Example:
 /// ```
 /// # use taskorch::TaskId;
@@ -204,15 +204,15 @@ impl TaskId {
 /// - For zero ID:
 ///   - In debug mode: panics immediately
 ///   - In release mode: logs warning but returns `TaskId::NONE`
-/// 
+///
 /// Examples:
 /// ```rust
-/// # use taskorch::TaskId; 
+/// # use taskorch::TaskId;
 /// let taskid = TaskId::from(1); // ok
 /// ```
 /// Donot try to explictly construct `TaskId` from `0`.
 /// Debug mode panic
-/// 
+///
 /// example (only compiles in debug):
 /// ```should_panic
 /// # use taskorch::TaskId;
@@ -274,14 +274,13 @@ fn test_tid() {
 /// The generic parameter `T` indicates the type of the parameter at this index position.
 /// This type `T` is propagated to the corresponding [`CondAddr<T>`], ensuring consistent
 /// type annotation throughout the condition addressing system.
-/// 
+///
 /// # Examples:
 /// ```rust
 /// # use taskorch::ArgIdx;
-/// 
+///
 /// fn ff(a:i32,b:i16,c:char) {}
-/// 
-/// // with `input``
+///
 /// let _ai = ArgIdx::<i8>::AI0; // point to a:i32
 /// let _ai = ArgIdx::<i8>::from(2); // point to c:char
 /// let _ai: ArgIdx::<i8> = 2.into(); // point to c:char

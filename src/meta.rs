@@ -328,11 +328,20 @@ mod test_tuple {
            handle(i,t);
         }
     }
+    struct B;
+    impl Handle for B {
+        fn handle<T>(&self,i:usize,t:&T) {
+           handle(i,t);
+        }
+    }
+
 
     #[test]
     fn test_foreach() {
         (3,).foreach(A);
         (3,"ss").foreach(A);
+        (3,).foreach(B);
+        (3,"ss").foreach(B);
     }
 }
 
