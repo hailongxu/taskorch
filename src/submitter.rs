@@ -161,7 +161,7 @@ impl TaskSubmitter {
         C: PsOf,
 
         MapFn: Fndecl<(C::R,),MapR> + Send + 'static,
-        MapFn::Pt: From<(<C as CallOnce>::R,)>,
+        MapFn::Pt: From<(<C as CallOnce>::R,)>, // C::R === ? <C as CallOnce>::R
         MapFn::Pt: Identical<(<C as CallOnce>::R,)>,
         MapFn::R: TupleCondAddr + Clone,
 
@@ -492,5 +492,5 @@ fn test_submmit() {
 
 #[test]
 fn test_taskinf() {
-    let taskinf = TaskInf::<(i32,)>::new(TaskId::new(3));
+    let _taskinf = TaskInf::<(i32,)>::new(TaskId::new(3));
 }

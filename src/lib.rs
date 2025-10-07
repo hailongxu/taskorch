@@ -22,6 +22,8 @@ pub use cond::{
 
 use queue::C1map;
 pub use queue::{spawn_thread, Queue};
+
+#[allow(deprecated)] // for TaskBuildOp will be removed at next ver.
 pub use task::{
     Kind,
     TaskNeed,

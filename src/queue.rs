@@ -154,7 +154,7 @@ impl C1map {
     }
 
 
-    pub(crate) fn insert_old<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->NonZeroUsize
+    pub(crate) fn _insert_old<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->NonZeroUsize
     where T: Task + Send + 'static
     {
         let task: Box::<dyn Task + Send + 'static> = Box::new(task);
@@ -163,7 +163,7 @@ impl C1map {
         taskid
     }
 
-    pub(crate) fn old_try_insert<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->Option<NonZeroUsize>
+    pub(crate) fn _old_try_insert<T>(&self,task: T,postdo:Box<PostDo>,taskid:NonZeroUsize)->Option<NonZeroUsize>
     where T: Task + Send + 'static
     {
         let task: Box::<dyn Task + Send + 'static> = Box::new(task);
@@ -189,21 +189,21 @@ impl C1map {
     // None: error
     fn update_ci<T:'static+Debug>(&self,target_ca:&CondAddr<T>,(v,v_from):(&T,&TaskId))->Option<bool> {
         let TaskId(Some(ref target_taskid)) = target_ca.taskid() else {
-            error!("task#{:?} is ZERO, not avaiable!", target_ca.taskid());
+            error!("target task#{:?} is ZERO, not avaiable! from task#{:?}", target_ca.taskid(), v_from);
             return None;
         };
-        // @A : if not input arrow return None;
+        // @A : return None if target direction is not input
         let Section::Input = target_ca.section() else {
-            error!("task#{:?} the direction is not input {:?}.", target_ca.taskid(), target_ca.argidx());
+            error!("target task#{:?} the direction is not input {:?} from task#{:?}.", target_ca.taskid(), target_ca.argidx(), v_from);
             return None;
         };
         let mut lock = self.0.0.lock().unwrap();
         let Some((target_task,_target_postdo)) = lock.get_mut(target_taskid) else {
-            error!("task#{:?} was not found, the cond#{:?} could not be updated", target_ca.taskid(), target_ca.argidx());
+            error!("target task#{:?} was not found, the cond#{:?} could not be updated from task#{:?}", target_ca.taskid(), target_ca.argidx(), v_from);
             return None;
         };
         let Some(param) = target_task.as_param_mut() else {
-            error!("task#{:?} failed to acquire cond#{:?}, update skipped.", target_ca.taskid(), target_ca.argidx());
+            error!("target task#{:?} failed to acquire cond#{:?}, update skipped from task#{:?}.", target_ca.taskid(), target_ca.argidx(), v_from);
             return None;
         };
         if !param.set(target_ca.argidx().i() as usize, v) {
@@ -221,12 +221,13 @@ impl C1map {
         } else {
             debug!("target task{{{target_ca:?}}} received from task{{{v_from:?}}}");
         }
+        let _ = v_from; // just ignore the warning
         Some(param.is_full())
     }
 }
 
 // tid and qid just used for log
-#[allow(unused_variables)]
+// #[allow(unused_variables)]
 pub(crate) fn when_ci_comed<T:'static+Debug>(target_ca:&CondAddr<T>, (v,v_from):(&T,&TaskId), c1map:C1map, (qid,q):(usize,Queue))->bool {
     let Some(true) = c1map.update_ci(target_ca,(v,v_from)) else {
         // the log has been processed in update_ci
@@ -235,7 +236,7 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(target_ca:&CondAddr<T>, (v,v_from):
 
     let TaskId(Some(ref target_taskid)) = target_ca.taskid() else {
         unreachable!("the taskid has checked in update_ci()!");
-        return false;
+        // return false;
     };
     let Some((target_task,postdo)) = c1map.remove(target_taskid) else {
         error!("cond task#{:?} does not find.",target_ca.taskid());
@@ -243,6 +244,7 @@ pub(crate) fn when_ci_comed<T:'static+Debug>(target_ca:&CondAddr<T>, (v,v_from):
     };
     debug!("cond task#{:?} has all conditions been satified and scheduled to Q#{qid}", target_ca.taskid());
     q.add_boxtask((target_task,postdo));
+    let _ = qid; // just for ignoring warning
     true
 }
 
@@ -313,9 +315,9 @@ fn test_when_tuple_comed() {
     let id_from = TaskId::new(1);
     
     let cond_addr1 = CondAddr::<i32>::new::<0>();
-    let taskid1 = NonZeroUsize::new(2).unwrap();
+    let _taskid1 = NonZeroUsize::new(2).unwrap();
     let cond_addr2 = CondAddr::<i32>::new::<1>();
-    let taskid2 = NonZeroUsize::new(2).unwrap();
+    let _taskid2 = NonZeroUsize::new(2).unwrap();
 
     ().foreach(&id_from, c1map.clone(), (0,q.clone()));
     (&(42,43), &(cond_addr1,cond_addr2)).foreach(&id_from, c1map.clone(), (0,q.clone()));

@@ -92,6 +92,7 @@ pub(crate) trait Task
     fn run(self:Box<Self>)->Box<dyn Any>;
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
     fn kind(&self)->Kind;
+    #[allow(dead_code)]
     fn id(&self)->TaskId;
 }
 
@@ -147,6 +148,7 @@ impl<C,MapFn,MapR:TupleCondAddr,ToFn> TaskNeed<C,MapFn,MapR,ToFn> {
 }
 
 #[test]
+#[allow(dead_code)]
 fn test_pass_through() {
     trait Function {}
     impl<F:FnOnce()> Function for F {}
@@ -174,7 +176,7 @@ fn test_pass_through() {
 impl<F,TC,R,MapFn1,R1,ToFn1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,ToFn1>
     where
     TC: TupleOpt,
-    R1:TupleCondAddr,
+    R1: TupleCondAddr,
 {
     /// Specifies where the result will be delivered.  
     /// Note:
@@ -494,6 +496,7 @@ fn test_task_build_fan_and_to() {
     match 0 {
         0 => {task.map_tuple_with(|_:()| (3,) ); }
         1 => {task.bind_to(CondAddr::from((TaskId::from(3),Input, ArgIdx::AI0))); }
+        #[allow(deprecated)]
         2 => {task.to(1,2); }
         _ => {}
     }

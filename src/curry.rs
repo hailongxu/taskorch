@@ -107,10 +107,12 @@ fn test3<'a>() {
 }
 
 
+// pub due to the submit
 pub trait CallOnce {
     type R;
     fn call_once(self)->Self::R;
     fn count(&self)->usize;
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam>;
 }
 
@@ -161,6 +163,7 @@ where
     fn count(&self)->usize {
         0
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         None
     }
@@ -187,6 +190,7 @@ where
     fn count(&self)->usize {
         0
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         None
     }
@@ -204,6 +208,7 @@ where
     fn count(&self)->usize {
         0
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         None
     }
@@ -358,6 +363,7 @@ where
     fn count(&self)->usize {
         1
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         Some(self)
     }
@@ -385,6 +391,7 @@ where
     fn count(&self)->usize {
         1
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         Some(self)
     }
@@ -403,6 +410,7 @@ where
     fn count(&self)->usize {
         1
     }
+    #[allow(private_interfaces)] // for CallParam pub(crate)
     fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
         Some(self)
     }
@@ -537,6 +545,7 @@ macro_rules! impl_currier_call {
             fn count(&self)->usize {
                 [$($i),+].len()
             }
+            #[allow(private_interfaces)] // for CallParam pub(crate)
             fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
                 Some(self)
             }
@@ -568,6 +577,7 @@ macro_rules! impl_currier_call {
             fn count(&self)->usize {
                 [$($i),+].len()
             }
+            #[allow(private_interfaces)] // for CallParam pub(crate)
             fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
                 Some(self)
             }
@@ -588,6 +598,7 @@ macro_rules! impl_currier_call {
             fn count(&self)->usize {
                 [$($i),+].len()
             }
+            #[allow(private_interfaces)] // for CallParam pub(crate)
             fn as_param_mut(&mut self)->Option<&mut dyn CallParam> {
                 Some(self)
             }

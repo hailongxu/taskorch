@@ -26,7 +26,7 @@
 //!
 //! This is purely a **descriptive address** - it identifies where data is located and what type it has,
 //! but does not itself provide access to the data. Actual data access requires separate mechanisms
-//! and is not implemented via [`Deref`] or similar traits on this type.
+//! and is not implemented via \[`Deref`\] or similar traits on this type.
 //!
 //! This combination provides a complete, type-safe way to identify task conditions.
 

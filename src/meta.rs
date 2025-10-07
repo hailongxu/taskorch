@@ -20,6 +20,7 @@ impl<T1> TupleAt<0> for (T1,) {
     }
 }
 
+#[allow(dead_code)]
 trait TupleExtAt {
     fn at<const I:u8>(&self)->&<Self as TupleAt<I>>::EleT
         where Self: TupleAt<I>;
@@ -114,15 +115,15 @@ tuple_at_impl!(7 T8; T1,T2,T3,T4,T5,T6,T7,T8);
 #[test]
 fn test_tuple_at() {
     type T = (i32,&'static str);
-    let a = <T as TupleAt::<0>>::value_at(&(2,""));
-    let a = (2,"").at::<0>();
+    let _a = <T as TupleAt::<0>>::value_at(&(2,""));
+    let _a = (2,"").at::<0>();
 }
 
 
 pub(crate) trait Identical<T> {}
 impl<T> Identical<T> for T {}
 
-pub(crate) trait TupleOpt {
+pub trait TupleOpt {
     type Opt;
     const NONE: Self::Opt;
 }
@@ -205,6 +206,7 @@ fndecl_impl!(0 P1, 1 P2, 2 P3, 3 P4, 4 P5, 5 P6, 6 P7, 7 P8);
 
 
 #[test]
+#[allow(dead_code)]
 fn test_fndecl() {
     {
         fn get<F:Fndecl<(String,),(String,)>>(_f:F) {}
@@ -213,7 +215,7 @@ fn test_fndecl() {
         struct AA<F:Fndecl<(String,),(String,)>> {
             f: F,
         }
-        let aa = AA {
+        let _aa = AA {
             f: ff2,
         };
     }
@@ -289,10 +291,12 @@ fn test_tuple_condaddr() {
 }
 
 
+#[allow(dead_code)]
 pub(crate) trait Handle {
     // type T;
     fn handle<T>(&self,i:usize,t:&T);
 }
+#[allow(dead_code)]
 trait TupleEachDo {
     fn foreach(&self,each_do:impl Handle);
 }
@@ -316,7 +320,7 @@ impl<T1,T2> TupleEachDo for (T1,T2) {
 
 #[cfg(test)]
 mod test_tuple {
-    use std::{any::type_name_of_val, fmt::Debug};
+    use std::any::type_name_of_val;
     use super::*;
 
     fn handle<T>(i:usize,t:T) {
@@ -347,6 +351,7 @@ mod test_tuple {
 
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod test_tuple2 {
     trait Handle {
         fn handle<T>(&self,t:T);
@@ -355,7 +360,7 @@ mod test_tuple2 {
         fn feach(&self,handle:Do);
     }
     impl<Do:Handle> TupleDo<Do> for () {
-        fn feach(&self,handle:Do) {
+        fn feach(&self,_handle:Do) {
         }
     }
     impl<Do:Handle,T1> TupleDo<Do> for (T1,) {
@@ -414,6 +419,7 @@ mod test {
         get(f,(),d);
         // get(|_:i32|9,(8,));
     }
+    #[test]
     fn test_fndel0() {
         let f = ||{};
         let d = |_:()|((3,3usize),);
@@ -436,7 +442,7 @@ fn test_type_check() {
     }
 
     struct AA;
-    struct BB;
+    // struct BB;
     println!("i32 is i32: {}", TypeChecker::<AA>::IS_UNIT);    // true
     println!("f64 is i32: {}", TypeChecker::<f64>::IS_UNIT);    // false
 
@@ -447,7 +453,7 @@ fn test_type_check() {
 
     impl<A,B> IsType<A,B>  {
         // add the fellowed line to the top of file, in unstable rust version.
-        #![feature(specialization)]
+        // #![feature(specialization)]
         #[cfg(false)]
         default const SAME: bool = false;
     }
