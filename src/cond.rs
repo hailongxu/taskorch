@@ -113,7 +113,7 @@ impl<T> Default for CondAddr<T> {
 /// - #2: Section (Input or Output)
 /// - #3: ArgIdx (argument index, based from 0)
 /// Returns:
-/// - return CondAddr<T>
+/// - return `CondAddr<T>`
 ///
 /// ## Exmaples:
 /// ```rust
