@@ -61,7 +61,7 @@ impl<Args> TaskInf<Args> {
     /// # let qid        = pool.insert_queue(&Queue::new()).unwrap();
     /// # let submitter  = pool.task_submitter(qid).unwrap();
     ///
-    /// let task_inf   = submitter.submit((|a: i32, b: bool| 3).into_task()).unwrap();
+    /// let task_inf   = submitter.submit((|a: i32, b: bool| 3).into_task()).take();
     /// println!("TaskInf: {task_inf:?}");
     ///
     /// let ca0 = task_inf.input_ca::<0>();
@@ -114,9 +114,10 @@ impl TaskSubmitter {
     /// # let submitter = pool.task_submitter(qid).unwrap();
     /// 
     /// // with explicit taskid=10
-    /// let task = (|a:i32|3,TaskId::from(10)).into_task();
+    /// let id10 = TaskId::from(10);
+    /// let task = (|a:i32|3,id10).into_task();
     /// let task = submitter.submit(task).take();
-    /// assert_eq!(task.taskid(),TaskId::from(10));
+    /// assert_eq!(task.taskid(),id10);
     /// println!("task inf: {task:?}");
     /// 
     /// // task without any parameters, taskid is optional
@@ -129,16 +130,17 @@ impl TaskSubmitter {
     /// 
     /// // task without any parameter, but with explicit taskid = 1
     /// // still use the taskid you inputted even if it is not necessary.
-    /// let task = (||3,1.into()).into_task();
+    /// let id1 = 1.into();
+    /// let task = (||3,id1).into_task();
     /// let task = submitter.submit(task).take(); 
-    /// assert_eq!(task.taskid(),TaskId::from(1));
+    /// assert_eq!(task.taskid(),id1);
     /// println!("task inf: {task:?}");
     /// 
     /// // with explicit taskid = 10
     /// // error, because 10 is used above.
-    /// let task = (||3,10.into()).into_task();
+    /// let task = (||3,id10).into_task();
     /// let task = submitter.submit(task).take(); 
-    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(10)));
+    /// assert_eq!(task.taskid(),id10);
     /// println!("task inf: {task:?}");
     /// ```
     ///
@@ -227,32 +229,34 @@ impl TaskSubmitter {
     /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
     /// # let submitter = pool.task_submitter(qid).unwrap();
     /// 
-    /// // with explicit taskid=1
-    /// let task = (|a:i32|3,TaskId::from(1)).into_task();
-    /// let task = submitter.submit(task).unwrap();
-    /// assert_eq!(task.taskid(),TaskId::from(1));
+    /// // with explicit taskid=10
+    /// let id10 = TaskId::from(10);
+    /// let task = (|a:i32|3,id10).into_task();
+    /// let task = submitter.try_submit(task).unwrap();
+    /// assert_eq!(task.taskid(),id10);
     /// println!("task inf: {task:?}");
     /// 
     /// // task without any parameters, taskid is optional
     /// let task = (||3).into_task();
-    /// let task = submitter.submit(task).unwrap();
+    /// let task = submitter.try_submit(task).unwrap();
     /// assert_eq!(task.taskid(),TaskId::NONE);
     /// // verify input_ca ???
     /// assert_eq!(task.input_ca::<0>().argidx(),&ArgIdx::<()>::AI0);
     /// println!("task inf: {task:?}");
     /// 
-    /// // Task without parameters, but with explicit task ID = 1.
-    /// // The specified task ID is always used, even if not strictly necessary.
-    /// let task = (||3,1.into()).into_task();
-    /// let task = submitter.submit(task).unwrap(); 
-    /// assert_eq!(task.taskid(),TaskId::from(1));
+    /// // task without any parameter, but with explicit taskid = 1
+    /// // still use the taskid you inputted even if it is not necessary.
+    /// let id1 = 1.into();
+    /// let task = (||3,id1).into_task();
+    /// let task = submitter.try_submit(task).unwrap(); 
+    /// assert_eq!(task.taskid(),id1);
     /// println!("task inf: {task:?}");
     /// 
-    /// // with explicit taskid = 1
-    /// // error, because 1 is used above.
-    /// let task = (||3,10.into()).into_task();
-    /// let task = submitter.submit(task).unwrap_err(); 
-    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(TaskId::from(1)));
+    /// // with explicit taskid = 10
+    /// // error, because 10 is used above.
+    /// let task = (||3,id10).into_task();
+    /// let task = submitter.try_submit(task).unwrap_err(); 
+    /// assert_eq!(task,TaskSubmitError::TaskIdAlreadyExists(id10));
     /// println!("task inf: {task:?}");
     /// ```
     ///
@@ -463,6 +467,8 @@ fn test_conv() {
 fn test_submmit() {
     use crate::task::TaskBuildNew;
     let s = TaskSubmitter::test_new();
+
+    // first is the new
     let id1 = TaskId::new(1);
     let task = (|_:i32|(),id1).into_task();
     let task = s.try_submit(task);
@@ -478,16 +484,18 @@ fn test_submmit() {
         task.is_err_and( |e| matches!( e, TaskSubmitError::TaskIdAlreadyExists(id) if {id==id1} ) )
     );
 
+    // still the same taskid
     let task = (|_:i8|(),id1).into_task();
     let task = s.submit(task);
     println!("debug of task: {task:?}");
     assert!(matches!(task,Submission::Updated(_)));
 
+    // new task id
     let id2 = TaskId::new(2);
     let task = (|_:i8|(),id2).into_task();
     let task = s.submit(task);
     println!("debug of task: {task:?}");
-    assert!(matches!(task,Submission::Updated(_)));
+    assert!(matches!(task,Submission::Added(inf) if inf.taskid == id2));
 }
 
 #[test]

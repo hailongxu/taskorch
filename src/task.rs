@@ -324,6 +324,7 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     /// # let mut pool = Pool::new();
     /// # let qid = pool.insert_queue(&Queue::new()).unwrap();
     /// # let submitter = pool.task_submitter(qid).unwrap();
+    /// 
     /// // the 1st task#1 receives cond i16 from task
     /// let task1 = (|_:i16|{}).into_task(); 
     /// // the 2nd task#2 receives cond &'static str from task
@@ -334,14 +335,14 @@ impl<F,TC,R,MapFn1,R1> TaskNeed<Currier<F,TC,R>, MapFn1,R1,OneToOne<R1>>
     ///         8i16,    // the 1st branch output
     ///         "apple", // the 2nd branch output
     ///     ));
-    /// let task1 = submitter.submit(task1).unwrap();
-    /// let task2 = submitter.submit(task2).unwrap();
+    /// let task1 = submitter.submit(task1).take();
+    /// let task2 = submitter.submit(task2).take();
     /// // bind the result to task1.p0 and task2.p0
     /// let task = task.bind_all_to((
     ///     task1.input_ca::<0>(),
     ///     task2.input_ca::<0>(),
     /// ));
-    /// let task = submitter.submit(task);
+    /// let task = submitter.try_submit(task);
     /// assert!(task.is_ok());
     /// ```
     pub fn bind_all_to(mut self, cats: R1::TCA)->Self {

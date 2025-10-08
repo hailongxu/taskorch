@@ -68,7 +68,7 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
 
     // task add
     let add = submitter1.try_submit(
-        (|a:i32,b:i32|{println!("task='add': (a:{a:?}+b:{b:?}) => task='exit'");a+b})
+        (|a:i32,b:i32|{println!("task='add': (a:{a:?} + b:{b:?}) => task='exit'");a+b})
         .into_task().bind_to(exit.input_ca::<0>())
     ).unwrap();
 
@@ -80,7 +80,7 @@ fn add_task(submitter1:&TaskSubmitter, submitter2:&TaskSubmitter) {
 
     // task B2
     let b2 = submitter1.try_submit(
-        (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}]=> task='add'");a})
+        (|a:i32|{println!("task='B2': recv (a:{a}) and [{a}] => task='add'");a})
         .into_task().bind_to(add.input_ca::<1>())
     ).unwrap();
 
