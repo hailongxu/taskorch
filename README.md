@@ -94,7 +94,8 @@ let task2 = (||{3}).into_task().bind_to(task.input_ca::<1>()); // task2 -> task
 let task1 = (|_:i16|{3}, TaskId::from(1)).into_task(); // task#1 with cond<i16>#0
 let task2 = (|_:i32|{3}, TaskId::from(2)).into_task(); // task#2 with cond<i32>#0
 let task = (|| 2i16).into_task() // Task output: i16
-    .map_tuple_with(|a: i16| (1i16, 2i32)) // Transforms input into multiple outputs
+    // Transforms input(task single output `i16`) into multiple outputs
+    .map_tuple_with(|a: i16| (1i16, 2i32))
     // Output binding:
     // - result.#0: i16 (bound to task1.input<0>)
     // - result.#1: i32 (bound to task2.input<0>)
@@ -137,11 +138,10 @@ fn main() {
                 .into_exit_task(),
         )
         .take();
-    // let exit = exit.take();
 
     // N->1 : pass i32 to exit-task.p0
     let b1 = (|a: i32| {
-        println!("task='B1':  pass ['{a}'] to task='exit'");
+        println!("task='B1':  pass ('{a}') to task='exit'");
         a
     })
     .into_task()
@@ -150,7 +150,7 @@ fn main() {
 
     // N->1 : pass str to exit task.p1
     let b2 = (|msg: &'static str| {
-        println!("task='B2':  pass ['{msg}'] to task='exit'");
+        println!("task='B2':  recv ('{msg}') and then pass ('{msg}') to task='exit'");
         msg
     })
     .into_task()
@@ -158,10 +158,10 @@ fn main() {
     let b2 = submitter.submit(b2).take();
 
     // 1->N : map result to task-b1 and task-b2
-    let b3 = (|| ())
+    let b3 = (||())
         .into_task()
         .map_tuple_with(move |_: ()| {
-            println!("task='A': map `()=>(i32,&str)` and pass to task=['B1','B2']");
+            println!("task='A': map `()=>(i32,&str)` and then pass (10,'exit') to task=['B1','B2']");
             (10, "exit")
         })
         .bind_all_to((b1.input_ca::<0>(), b2.input_ca::<0>()));

@@ -77,7 +77,7 @@ pub fn spawn_thread(queue:&Queue)-> Jhandle {
     let quit = quit_flag.clone();
     let queue = queue.0.clone();
     let handle = thread::spawn(move||{
-        warn!("starts ok.");
+        warn!("thread starts ok.");
         loop {
             if quit.load(Ordering::Relaxed) {
                 warn!("Quit flag detected and prepare to exit.");
@@ -188,8 +188,14 @@ impl C1map {
     // Some(false): not full
     // None: error
     fn update_ci<T:'static+Debug>(&self,target_ca:&CondAddr<T>,(v,v_from):(&T,&TaskId))->Option<bool> {
+        // The value check should be placed at @A. But this is special for uint ()
+        // !!!!! The next solving method: the map function maybe was moved into task body, not be put in PostDo.
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<()>() {
+            trace!("The target value is () from task#{v_from:?} and will be ignored!.");
+            return None;
+        }
         let TaskId(Some(ref target_taskid)) = target_ca.taskid() else {
-            error!("target task#{:?} is ZERO, not avaiable! from task#{:?}", target_ca.taskid(), v_from);
+            error!("target task#{:?} is ZERO, not avaiable! from task#{:?} {:?}", target_ca.taskid(), v_from,v);
             return None;
         };
         // @A : return None if target direction is not input

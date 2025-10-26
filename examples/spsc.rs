@@ -33,7 +33,7 @@ fn consume_task_prompt(submitter:&TaskSubmitter) {
 
 fn produce_task(submitter:TaskSubmitter) {
     prompt("hello");
-    submitter.submit((||println!("consmue task='hello': helle everyone!")).into_task());
+    submitter.submit((||println!("consmue task='hello': hello everyone!")).into_task());
 
     prompt("exit");
     let id_exit = submitter.submit((|a:i32|println!("consume task='exit': recv cond={a} and exit.")).into_exit_task())
@@ -42,14 +42,14 @@ fn produce_task(submitter:TaskSubmitter) {
     prompt("add");
     let id_add = submitter.submit(
         (|a:i32,b:i32|{
-            println!("consume task='add': (a={a},b={b}) and pass (r={}) to Task='exit'",a+b);
+            println!("consume task='add': ({a},{b}) and then pass (r={}) to Task='exit'",a+b);
             a+b
         }).into_task().bind_to(id_exit.input_ca::<0>())
     ).take();
 
     prompt("params");
     let _ = submitter.submit(
-        (||{println!("consume task='params': pass (1, 2) to task='add'");1},10.into())
+        (||{println!("consume task='params': pass (1,2) to task='add'");1},10.into())
         .into_task()
         .map_tuple_with(move|_:i32| (1,2))
         .bind_all_to((id_add.input_ca::<0>(),id_add.input_ca::<1>()))
